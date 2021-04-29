@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='palavreado',
-    version='0.1.0',
+    version='0.2.0',
     packages=['palavreado'],
     url='https://github.com/OpenJarbas/palavreado',
     license='apache-2.0',

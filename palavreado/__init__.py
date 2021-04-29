@@ -3,14 +3,14 @@ import logging
 from palavreado.bracket_expansion import expand_parentheses
 from palavreado.builder import IntentCreator
 from quebra_frases.chunks import chunk
-from quebra_frases import word_tokenize, get_exclusive_tokens
+from quebra_frases import word_tokenize, get_exclusive_tokens, flatten
 
 LOG = logging.getLogger('palavreado')
 
 
 def get_utterance_remainder(utterance, samples, as_string=True):
-    chunks = get_exclusive_tokens([utterance] + samples)
-    words = [t for t in word_tokenize(utterance) if t in chunks]
+    chunks = flatten([word_tokenize(s) for s in samples])
+    words = [t for t in word_tokenize(utterance) if t not in chunks]
     if as_string:
         return " ".join(words)
     return words
@@ -36,6 +36,19 @@ class IntentContainer:
 
     # intent api
     def calc_intents(self, query):
+
+        def _match(kw_samples):
+            # HACK around chunk function limitations
+            plurals = [w for w in kw_samples if
+                       w.endswith("s")]
+            kw_samples = [w for w in kw_samples
+                          if not w.endswith("s") and
+                          w + "s" not in query]
+            chunked = chunk(query, kw_samples)
+            chunked2 = chunk(query, plurals)
+            return [c for c in chunked if c in kw_samples] + \
+                   [c for c in chunked2 if c in plurals]
+
         for intent_name, intent in self.intents.items():
             if not len(intent["required"]):
                 continue
@@ -56,9 +69,15 @@ class IntentContainer:
                     match = regex_compiled.match(query)
                     if match:
                         result = match.groupdict()
+
+                        remainder = get_utterance_remainder(remainder,
+                                                            [kw] + list(
+                                                                result.values()))
+
                         for k, v in result.items():
-                            matches[k] = v
-                            remainder = get_utterance_remainder(remainder, [v])
+                            if k not in matches:
+                                matches[k] = []
+                            matches[k].append(v)
                             if k not in intent["required"] and \
                                     k not in intent["optional"]:
                                 conf += partial_opt_conf * 0.2
@@ -66,8 +85,9 @@ class IntentContainer:
                     else:
                         kws = re.findall(rx, query)
                         if kws:
-                            matches[kw] = kws[0]
-                            remainder = get_utterance_remainder(remainder, kws)
+                            matches[kw] = kws
+                            remainder = get_utterance_remainder(remainder,
+                                                                kws)
                             break
 
                 if kw in intent["required"] and kw in matches:
@@ -80,15 +100,13 @@ class IntentContainer:
                 if not kw_samples:
                     continue
                 if query in kw_samples:
-                    matches[kw] = query
+                    matches[kw] = [query]
                     conf += partial_conf
                     remainder = ""
                 else:
-                    chunked = chunk(query, kw_samples)
-                    kws = [c for c in chunked if c in kw_samples]
-                    # TODO is len ever > 1 ?
+                    kws = _match(kw_samples)
                     if kws:
-                        matches[kw] = kws[0]
+                        matches[kw] = kws
                         conf += partial_conf
                         remainder = get_utterance_remainder(remainder, kws)
                         if remainder in kws:
@@ -100,26 +118,26 @@ class IntentContainer:
                     if not kw_samples:
                         continue
                     if query in kw_samples:
-                        matches[kw] = query
+                        matches[kw] = [query]
                         conf += partial_opt_conf
                         remainder = ""
                     else:
-                        chunked = chunk(query, kw_samples)
-                        kws = [c for c in chunked if c in kw_samples]
-                        # TODO is len ever > 1 ?
+                        kws = _match(kw_samples)
                         if kws:
-                            matches[kw] = kws[0]
+                            matches[kw] = kws
                             conf += partial_opt_conf
-                            remainder = get_utterance_remainder(remainder, kws)
+                            remainder = get_utterance_remainder(remainder,
+                                                                kws)
                             if remainder in kws:
                                 remainder = ""
 
             # weight down based on length of utterance remainder
-            ratio = len(remainder) / len(query)
-            ratio = ratio * 0.1
+            if len(query):
+                ratio = len(remainder) / len(query)
+                ratio = ratio * 0.1
 
-            # normalize score
-            conf = max(0.0, conf - ratio)
+                # normalize score
+                conf = max(0.0, conf - ratio)
             conf = min(1.0, conf)
 
             if conf > 0:
