@@ -1,4 +1,5 @@
-from ovos_plugin_manager.templates.pipeline import IntentPipelinePlugin, IntentMatch, RegexEntityDefinition
+from ovos_plugin_manager.templates.pipeline import IntentPipelinePlugin, IntentMatch,\
+    RegexEntityDefinition, KeywordIntentDefinition
 from ovos_utils import classproperty
 
 from palavreado import IntentContainer, IntentCreator
@@ -30,7 +31,9 @@ class PalavreadoPipelinePlugin(IntentPipelinePlugin):
     def train(self):
         # update intents with registered samples
         for lang in self.engines:
-            for intent in (e for e in self.registered_intents if e.lang == lang):
+            for intent in (e for e in self.registered_intents
+                           if e.lang == lang and isinstance(e, KeywordIntentDefinition)):
+
                 munged = _munge(intent.name, intent.skill_id)
                 intent_builder = IntentCreator(munged)
 
@@ -39,11 +42,14 @@ class PalavreadoPipelinePlugin(IntentPipelinePlugin):
                     munged_ent = _munge(entity.name, intent.skill_id)
 
                     if isinstance(entity, RegexEntityDefinition):
-                        intent_builder.regexes[munged_ent] = entity.samples
+                        if entity.name in intent.required:
+                            intent_builder.require_regex(munged_ent, entity.samples)
+                        elif entity.name in intent.optional:
+                            intent_builder.optional_regex(munged_ent, entity.samples)
                     elif entity.name in intent.required:
-                        intent_builder.required[munged_ent] = entity.samples
+                        intent_builder.require(munged_ent, entity.samples)
                     elif entity.name in intent.optional:
-                        intent_builder.optional[munged_ent] = entity.samples
+                        intent_builder.optional(munged_ent, entity.samples)
 
                 self.engines[lang].add_intent(intent_builder)
 
