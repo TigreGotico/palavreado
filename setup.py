@@ -1,5 +1,8 @@
 from setuptools import setup
 
+PLUGIN_ENTRY_POINT = 'ovos-intent-plugin-palavreado=palavreado.opm:PalavreadoPipelinePlugin'
+
+
 setup(
     name='palavreado',
     version='0.2.0',
@@ -9,5 +12,6 @@ setup(
     author='jarbasai',
     author_email='jarbasai@mailfence.com',
     install_requires=["simplematch", "quebra_frases"],
-    description='dead simple keyword based intent parser'
+    description='dead simple keyword based intent parser',
+    entry_points={'ovos.pipeline': PLUGIN_ENTRY_POINT}
 )
