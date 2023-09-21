@@ -1,6 +1,6 @@
 from setuptools import setup
 
-PLUGIN_ENTRY_POINT = 'ovos-intent-plugin-nebulento=nebulento.opm:NebulentoPipelinePlugin'
+PLUGIN_ENTRY_POINT = 'ovos-intent-plugin-palavreado=palavreado.opm:PalavreadoPipelinePlugin'
 
 
 setup(
