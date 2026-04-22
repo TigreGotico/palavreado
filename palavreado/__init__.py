@@ -328,6 +328,9 @@ class IntentContainer:
                             matches.setdefault(k, []).append(v)
                             if k not in intent["required"] and k not in intent["optional"]:
                                 conf += partial_opt_conf * 0.2
+                        # Always mark the slot itself as matched so the required
+                        # check passes and conf credit fires below.
+                        matches.setdefault(kw, list(result.values()) or [m.group(0)])
                         break
                     kws = [k for k in re.findall(rx, query) if k and isinstance(k, str)]
                     if kws:

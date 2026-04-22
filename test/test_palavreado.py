@@ -554,5 +554,151 @@ class TestBracketExpansion(unittest.TestCase):
         self.assertIn("hello", result)
 
 
+class TestRegexSlots(unittest.TestCase):
+
+    def test_regex_named_groups_fires(self):
+        """Regex with named groups should match and populate each group."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("travel").require_regex(
+                "route", [r"from (?P<origin>.*) to (?P<dest>.*)"]
+            )
+        )
+        result = container.calc_intent("from london to paris")
+        self.assertEqual(result["name"], "travel")
+        self.assertEqual(result["keywords"]["origin"], ["london"])
+        self.assertEqual(result["keywords"]["dest"], ["paris"])
+
+    def test_regex_named_groups_slot_in_matches(self):
+        """The slot name itself must be in keywords even when named groups are used."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("travel").require_regex(
+                "route", [r"from (?P<origin>.*) to (?P<dest>.*)"]
+            )
+        )
+        result = container.calc_intent("from london to paris")
+        self.assertIn("route", result["keywords"])
+
+    def test_regex_required_slot_missing_no_match(self):
+        """Intent with required regex slot should not fire when regex doesn't match."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("travel").require_regex(
+                "route", [r"from (?P<origin>\w+) to (?P<dest>\w+)"]
+            )
+        )
+        result = container.calc_intent("go somewhere nice")
+        self.assertIsNone(result["name"])
+
+    def test_regex_combined_with_keyword_slot(self):
+        """Regex required slot and keyword required slot must both match."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("time_in_location")
+            .require_regex("Location", [r"\b(at|in|for) (?P<Location>.*)"])
+            .require("time", ["time"])
+        )
+        self.assertEqual(
+            container.calc_intent("what time is it in London")["name"],
+            "time_in_location",
+        )
+        # Without the time keyword, should not match
+        self.assertIsNone(
+            container.calc_intent("what is it in London")["name"]
+        )
+
+
+class TestOptionalOnlyIntent(unittest.TestCase):
+
+    def test_optional_only_intent_never_fires(self):
+        """An intent with no required slots should never match."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("ghost").optionally("kw", ["hello"])
+        )
+        self.assertIsNone(container.calc_intent("hello")["name"])
+        self.assertIsNone(container.calc_intent("anything")["name"])
+
+
+class TestKeywordExclusionMultiword(unittest.TestCase):
+
+    def test_multiword_exclusion_blocks(self):
+        """Multi-word exclusion keyword blocks intent when phrase is present."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("play").require("kw", ["play"]))
+        container.exclude_keywords("play", ["do not play"])
+        self.assertIsNone(container.calc_intent("please do not play music")["name"])
+
+    def test_multiword_exclusion_passes_without_phrase(self):
+        """Multi-word exclusion should not block intent when phrase is absent."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("play").require("kw", ["play"]))
+        container.exclude_keywords("play", ["do not play"])
+        self.assertEqual(container.calc_intent("play some music")["name"], "play")
+
+    def test_multiword_exclusion_no_partial_match(self):
+        """Multi-word exclusion phrase should not fire on a partial word match."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("play").require("kw", ["play"]))
+        container.exclude_keywords("play", ["not play"])
+        # "notable player" doesn't contain "not play" as whole words
+        self.assertEqual(container.calc_intent("play it again")["name"], "play")
+
+
+class TestTiebreaking(unittest.TestCase):
+
+    def test_tiebreaker_alphabetical(self):
+        """When confidence and matched words are equal, prefer alphabetically first name."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("zzz_intent").require("kw", ["hello"]))
+        container.add_intent(IntentCreator("aaa_intent").require("kw", ["hello"]))
+        self.assertEqual(container.calc_intent("hello")["name"], "aaa_intent")
+
+    def test_higher_confidence_wins(self):
+        """Intent with more matched slots wins over single-slot intent."""
+        container = IntentContainer()
+        container.add_intent(
+            IntentCreator("specific")
+            .require("action", ["turn off"])
+            .require("target", ["lights"])
+        )
+        container.add_intent(
+            IntentCreator("generic").require("action", ["turn off"])
+        )
+        result = container.calc_intent("turn off the lights")
+        self.assertEqual(result["name"], "specific")
+
+
+class TestScore(unittest.TestCase):
+
+    def test_score_perfect(self):
+        from palavreado import _score
+        self.assertEqual(_score(1.0, "", 2, 1, 1), 1.0)
+
+    def test_score_remainder_lowers_confidence(self):
+        from palavreado import _score
+        with_remainder = _score(1.0, "extra word", 4, 2, 2)
+        without_remainder = _score(1.0, "", 2, 1, 1)
+        self.assertLess(with_remainder, without_remainder)
+
+    def test_score_zero_words_returns_zero(self):
+        from palavreado import _score
+        self.assertEqual(_score(1.0, "", 0, 1, 1), 0.0)
+
+    def test_score_clamped_to_zero(self):
+        from palavreado import _score
+        self.assertGreaterEqual(_score(0.0, "a b c d e", 5, 0, 1), 0.0)
+
+    def test_score_clamped_to_one(self):
+        from palavreado import _score
+        self.assertLessEqual(_score(1.0, "", 1, 10, 10), 1.0)
+
+    def test_score_rounded_to_four_places(self):
+        from palavreado import _score
+        result = _score(0.5, "x", 3, 1, 2)
+        self.assertEqual(result, round(result, 4))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,7 +12,6 @@ apostrophe and plural variants.
 import itertools
 import re
 from typing import List
-import re
 
 
 def expand_parentheses(sent: str) -> List[str]:
