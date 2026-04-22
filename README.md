@@ -250,8 +250,8 @@ Evaluated on a keyword-intent dataset of **284 cases** (217 match utterances acr
 
 | Engine | Accuracy | Precision | Recall | F1 | TN / no-match | FP | Median latency |
 |---|---|---|---|---|---|---|---|
-| **palavreado** | **82.0%** | **84.0%** | **94.5%** | **0.889** | 28 / 67 | 39 | 0.54 ms |
-| adapt | 79.6% | 84.7% | 89.4% | 0.870 | **32 / 67** | **35** | **0.19 ms** |
+| **palavreado** | **82.0%** | 84.0% | **94.5%** | **0.889** | 28 / 67 | 39 | 0.54 ms |
+| adapt | 79.6% | **84.7%** | 89.4% | 0.870 | **32 / 67** | **35** | **0.19 ms** |
 
 **TN / no-match** = utterances that correctly returned *no intent* out of the 67 no-match cases.
 
