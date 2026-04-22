@@ -12,7 +12,7 @@ from typing import Dict, Iterator, List, Union
 from palavreado.bracket_expansion import normalize_utterance, normalize_example, lemmatize  # noqa: F401 (lemmatize exported for callers)
 from palavreado.builder import IntentCreator
 from quebra_frases.chunks import chunk
-from quebra_frases import word_tokenize, flatten
+from quebra_frases import word_tokenize
 
 LOG = logging.getLogger('palavreado')
 
@@ -21,6 +21,34 @@ _tokenize = lru_cache(maxsize=512)(word_tokenize)
 
 def _word_count(s: str) -> int:
     return len(s.split()) if s else 0
+
+
+def _score(raw_conf: float, remainder: str, q_words: int,
+           n_matched_slots: int, n_total_slots: int) -> float:
+    """Compute final confidence from raw slot score plus contextual adjustments.
+
+    Adjustments (all in [0, 1] space):
+    - **Remainder penalty**: words not consumed by any slot reduce confidence.
+      Higher weight (0.2×) than a naive character ratio so precise matches
+      clearly outrank accidental single-keyword hits in long utterances.
+    - **Coverage bonus**: fraction of query words that *were* matched gives a
+      small upward nudge (0.05×), rewarding intents that explain more of the
+      query.
+    - **Slot bonus**: more matched slots → more evidence → higher score
+      (0.05 × matched/total).  This ensures ``lights_off`` (two required slots
+      matched) beats a single-slot intent when both would otherwise tie.
+
+    The result is clamped to [0, 1] and rounded to 4 decimal places.
+    """
+    if not q_words:
+        return 0.0
+    r_words = _word_count(remainder)
+    matched_words = q_words - r_words
+    coverage = matched_words / q_words
+    remainder_penalty = (r_words / q_words) * 0.2
+    slot_bonus = (n_matched_slots / max(n_total_slots, 1)) * 0.05
+    conf = raw_conf - remainder_penalty + coverage * 0.05 + slot_bonus
+    return round(min(1.0, max(0.0, conf)), 4)
 
 
 def get_utterance_remainder(utterance: str,
@@ -212,8 +240,8 @@ class IntentContainer:
     def calc_intents(self, query: str) -> Iterator[dict]:
         """Yield scored match results for every intent that matches *query*.
 
-        Only intents with a confidence > 0 are yielded.  Each result is a
-        dict with keys ``name``, ``conf``, ``keywords``, ``utterance``, and
+        Only intents with confidence > 0 are yielded.  Each result is a dict
+        with keys ``name``, ``conf``, ``keywords``, ``utterance``, and
         ``utterance_remainder``.
 
         Args:
@@ -223,130 +251,118 @@ class IntentContainer:
             Match result dicts ordered by registration, not by confidence.
             Use :meth:`calc_intent` to obtain the single best match.
         """
-        # normalise query the same way training data was normalised
         query = normalize_utterance(query)
         excluded = self._filter(query)
-
-        # lemmatized query tokens for fast lookup
+        q_words = _word_count(query)
         query_lemmas = {lemmatize(t) for t in _tokenize(query)}
+        # build lemma query once — reused by every intent
+        lemma_query = " ".join(lemmatize(t) for t in _tokenize(query))
 
-        def _match(kw_samples: List[str]) -> List[str]:
-            # Build a mapping: lemmatized sample → original sample string.
-            # If the lemma of a sample exists anywhere in the lemmatized query
-            # tokens, we try chunk() on the original query with both the
-            # original and (if different) the surface form found in the query.
-            candidates: List[str] = []
+        def _match(kw_samples: List[str]) -> tuple:
+            """Return ``(matched_keywords, quality)`` where quality ∈ (0, 1].
+
+            Quality:
+            - 1.0 — contiguous (exact surface or lemma-normalised)
+            - 0.8 — non-contiguous token-subset (all tokens present, any order)
+
+            Non-contiguous matches get lower quality so a direct single-word
+            hit beats a generic multi-word keyword matched out of sequence.
+            """
+            single_cands: List[str] = []
+            multi_cands: List[str] = []
             for w in kw_samples:
-                lw = lemmatize(w)
-                if lw in query_lemmas:
-                    candidates.append(w)
-                    continue
-                # also try each token of w (multi-word samples)
-                if all(lemmatize(t) in query_lemmas for t in _tokenize(w)):
-                    candidates.append(w)
+                toks = _tokenize(w)
+                if len(toks) == 1:
+                    if lemmatize(toks[0]) in query_lemmas:
+                        single_cands.append(w)
+                elif all(lemmatize(t) in query_lemmas for t in toks):
+                    multi_cands.append(w)
 
+            candidates = single_cands + multi_cands
             if not candidates:
-                return []
+                return [], 1.0
 
-            # chunk() finds contiguous substrings; run it on the original query
-            # with original-form candidates first, then lemmatized fallback.
-            matched = [c for c in chunk(query, candidates) if c in candidates]
+            cand_set = set(candidates)
+            # Pass 1: contiguous match on original surface form.
+            matched = [c for c in chunk(query, candidates) if c in cand_set]
             if matched:
-                return matched
+                return sorted(matched, key=lambda x: len(x.split()), reverse=True), 1.0
 
-            # lemmatized fallback: rebuild a lemma-normalised query string and
-            # compare against lemmatized candidates, then return original forms.
-            lemma_query = " ".join(lemmatize(t) for t in _tokenize(query))
+            # Pass 2: contiguous match on lemma-normalised query.
             lemma_map = {lemmatize(w): w for w in candidates}
-            lemma_cands = list(lemma_map.keys())
-            matched_lemmas = [c for c in chunk(lemma_query, lemma_cands)
-                              if c in lemma_map]
-            return [lemma_map[lm] for lm in matched_lemmas]
+            matched_lemmas = [c for c in chunk(lemma_query, list(lemma_map)) if c in lemma_map]
+            if matched_lemmas:
+                result = sorted([lemma_map[lm] for lm in matched_lemmas],
+                                key=lambda x: len(x.split()), reverse=True)
+                return result, 1.0
+
+            # Pass 3: non-contiguous — multi-word only.
+            if multi_cands:
+                return sorted(multi_cands, key=lambda x: len(x.split()), reverse=True), 0.8
+
+            return [], 1.0
 
         for intent_name, intent in self.intents.items():
-            if intent_name in excluded:
+            if intent_name in excluded or not intent["required"]:
                 continue
-            if not intent["required"]:
-                continue
-            remainder = query
-            conf = 0.0
+
             n_req = len(intent["required"])
             n_opt = len(intent["optional"])
             partial_conf = 1.0 / n_req
             partial_opt_conf = 0.15 / (n_opt or 1)
             matches: dict = {}
+            remainder = query
+            conf = 0.0
             compiled = self._compiled[intent_name]
 
-            # match regex keywords
+            # ── regex slots ───────────────────────────────────────────────────
             for kw, kw_patterns in intent["regex"].items():
                 if not kw_patterns:
                     continue
                 for rx in sorted(kw_patterns, key=len, reverse=True):
-                    regex_compiled = compiled[rx]
-                    m = regex_compiled.match(query)
+                    m = compiled[rx].match(query) or compiled[rx].search(query)
                     if m:
-                        result = m.groupdict()
-                        remainder = get_utterance_remainder(
-                            remainder, [kw] + list(result.values())
-                        )
+                        result = {k: v for k, v in m.groupdict().items() if v is not None}
+                        remainder = get_utterance_remainder(remainder, [kw] + list(result.values()))
                         for k, v in result.items():
                             matches.setdefault(k, []).append(v)
                             if k not in intent["required"] and k not in intent["optional"]:
                                 conf += partial_opt_conf * 0.2
                         break
-                    kws = re.findall(rx, query)
+                    kws = [k for k in re.findall(rx, query) if k and isinstance(k, str)]
                     if kws:
                         matches[kw] = kws
                         remainder = get_utterance_remainder(remainder, kws)
                         break
-
                 if kw in intent["required"] and kw in matches:
                     conf += partial_conf * 0.9
                 elif kw in intent["optional"] and kw in matches:
                     conf += partial_opt_conf * 0.9
 
-            # match required keywords
-            for kw, kw_samples in intent["required"].items():
-                if not kw_samples:
-                    continue
-                if query in kw_samples:
-                    matches[kw] = [query]
-                    conf += partial_conf
-                    remainder = ""
-                else:
-                    kws = _match(kw_samples)
-                    if kws:
-                        matches[kw] = kws
-                        conf += partial_conf
-                        remainder = get_utterance_remainder(remainder, kws)
-                        if remainder in kws:
-                            remainder = ""
+            # ── keyword slots (required + optional in one pass) ───────────────
+            for kw_dict, weight in ((intent["required"], partial_conf),
+                                    (intent["optional"], partial_opt_conf)):
+                for kw, kw_samples in kw_dict.items():
+                    if not kw_samples:
+                        continue
+                    if query in kw_samples:
+                        matches[kw] = [query]
+                        conf += weight
+                        remainder = ""
+                    else:
+                        kws, quality = _match(kw_samples)
+                        if kws:
+                            matches[kw] = kws
+                            conf += weight * quality
+                            remainder = get_utterance_remainder(remainder, kws)
+                            if remainder in kws:
+                                remainder = ""
 
-            # match optional keywords
-            for kw, kw_samples in intent["optional"].items():
-                if not kw_samples:
-                    continue
-                if query in kw_samples:
-                    matches[kw] = [query]
-                    conf += partial_opt_conf
-                    remainder = ""
-                else:
-                    kws = _match(kw_samples)
-                    if kws:
-                        matches[kw] = kws
-                        conf += partial_opt_conf
-                        remainder = get_utterance_remainder(remainder, kws)
-                        if remainder in kws:
-                            remainder = ""
+            # All required slots with samples must be present.
+            if not {kw for kw, s in intent["required"].items() if s}.issubset(matches):
+                continue
 
-            # penalise by word-count fraction of remainder
-            if query:
-                q_words = _word_count(query)
-                r_words = _word_count(remainder)
-                ratio = (r_words / q_words) * 0.1
-                conf = max(0.0, conf - ratio)
-            conf = min(1.0, conf)
-
+            conf = _score(conf, remainder, q_words, len(matches), n_req + n_opt)
             if conf > 0:
                 yield {
                     "keywords": matches,
@@ -368,21 +384,42 @@ class IntentContainer:
             intent matches, returns a result dict with ``name=None`` and
             ``conf=0``.
         """
+        def _matched_words(r: dict) -> int:
+            """Total words covered by matched keyword samples."""
+            return sum(
+                sum(_word_count(kw) for kw in kws)
+                for kws in r["keywords"].values()
+            )
+
         best = None
         best_conf = -1.0
+        best_matched = -1
         for result in self.calc_intents(query):
             c = result["conf"]
-            if c > best_conf or (
-                c == best_conf and best is not None and (
-                    _word_count(result["utterance_remainder"]) <
-                    _word_count(best["utterance_remainder"]) or (
-                        _word_count(result["utterance_remainder"]) ==
-                        _word_count(best["utterance_remainder"]) and
-                        result["name"] < best["name"]
+            mw = _matched_words(result)
+            rem = _word_count(result["utterance_remainder"])
+            if best is None:
+                better = True
+            elif c > best_conf:
+                better = True
+            elif c == best_conf:
+                # prefer more query words matched (more specific)
+                if mw > best_matched:
+                    better = True
+                elif mw == best_matched:
+                    # prefer shorter remainder (less leftover)
+                    best_rem = _word_count(best["utterance_remainder"])
+                    better = rem < best_rem or (
+                        rem == best_rem and result["name"] < best["name"]
                     )
-                )
-            ):
+                else:
+                    better = False
+            else:
+                better = False
+
+            if better:
                 best_conf = c
+                best_matched = mw
                 best = result
         if best is None:
             norm = normalize_utterance(query)

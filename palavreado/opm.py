@@ -1,211 +1,277 @@
-"""OVOS pipeline plugin wrapping palavreado."""
+"""OVOS pipeline plugin wrapping palavreado — keyword intent matching (adapt replacement)."""
 
 from functools import lru_cache
-from os.path import isfile
 from typing import Dict, List, Optional, Union
 
 from langcodes import closest_match
 from ovos_bus_client.client import MessageBusClient
 from ovos_bus_client.message import Message
 from ovos_bus_client.session import SessionManager, Session
+from ovos_bus_client.util import get_message_lang
 from ovos_config.config import Configuration
 from ovos_plugin_manager.templates.pipeline import ConfidenceMatcherPipeline, IntentHandlerMatch
 from ovos_utils import flatten_list
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.lang import standardize_lang_tag
 from ovos_utils.log import LOG
+from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
-
-
-class PalavreadoIntent:
-    """A matched intent result with dict-like access to extracted keywords.
-
-    Attributes:
-        name: Intent identifier (``"skill_id:intent_name"``).
-        sent: The original utterance.
-        conf: Confidence score in ``[0.0, 1.0]``.
-        matches: Extracted keyword/entity values keyed by slot name.
-    """
-
-    def __init__(self, name: str, sent: str,
-                 matches: Optional[dict] = None, conf: float = 0.0) -> None:
-        self.name = name
-        self.sent = sent
-        self.matches = matches or {}
-        self.conf = conf
-
-    def __getitem__(self, item):
-        return self.matches[item]
-
-    def __contains__(self, item):
-        return item in self.matches
-
-    def get(self, key, default=None):
-        return self.matches.get(key, default)
-
-    def __repr__(self) -> str:
-        return repr(self.__dict__)
+from palavreado.builder import IntentCreator
 
 
 class PalavreadoPipeline(ConfidenceMatcherPipeline):
-    """OVOS pipeline plugin for palavreado keyword intent matching."""
+    """OVOS pipeline plugin for palavreado keyword intent matching.
+
+    Drop-in replacement for the Adapt pipeline.  Skills register vocabulary
+    and intents via the standard ``register_vocab`` / ``register_intent`` bus
+    messages; no padatious ``.intent`` file loading is involved.
+    """
 
     def __init__(self, bus: Optional[Union[MessageBusClient, FakeBus]] = None,
                  config: Optional[Dict] = None) -> None:
-        super().__init__(config=config or {}, bus=bus)
-
         core_config = Configuration()
+        config = config or core_config.get("palavreado", {})
+        super().__init__(bus=bus, config=config)
+
         self.lang = standardize_lang_tag(core_config.get("lang", "en-US"))
         langs = core_config.get("secondary_langs") or []
         if self.lang not in langs:
             langs.append(self.lang)
         langs = [standardize_lang_tag(lang) for lang in langs]
 
-        self.conf_high = self.config.get("conf_high") or 0.95
-        self.conf_med = self.config.get("conf_med") or 0.8
-        self.conf_low = self.config.get("conf_low") or 0.5
+        self.conf_high = self.config.get("conf_high") or 0.65
+        self.conf_med = self.config.get("conf_med") or 0.45
+        self.conf_low = self.config.get("conf_low") or 0.25
         self.max_words = self.config.get("max_words") or 50
 
+        # per-lang intent containers
         self.containers: Dict[str, IntentContainer] = {
             lang: IntentContainer() for lang in langs
         }
+        # per-lang vocab store: entity_type → [entity_value, ...]
+        self._vocab: Dict[str, Dict[str, List[str]]] = {
+            lang: {} for lang in langs
+        }
+        # per-lang regex store: list of raw regex strings
+        self._regexes: Dict[str, List[str]] = {lang: [] for lang in langs}
 
-        self.bus.on("padatious:register_intent", self.register_intent)
-        self.bus.on("padatious:register_entity", self.register_entity)
+        self.registered_vocab: List[dict] = []
+        self._registered_intents: List[dict] = []  # raw intent dicts for manifest
+
+        self.bus.on("register_vocab", self.handle_register_vocab)
+        self.bus.on("register_intent", self.handle_register_intent)
         self.bus.on("detach_intent", self.handle_detach_intent)
         self.bus.on("detach_skill", self.handle_detach_skill)
-        self.bus.on("mycroft.skills.train", self.train)
 
-        self.registered_intents: List[str] = []
-        self.registered_entities: List[dict] = []
+        self.bus.on("intent.service.palavreado.get", self.handle_get_palavreado)
+        self.bus.on("intent.service.palavreado.manifest.get", self.handle_palavreado_manifest)
+        self.bus.on("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
+
         LOG.debug("Loaded Palavreado pipeline")
 
-    def train(self, message=None) -> None:
-        """No offline training required — emit trained signal immediately."""
-        self.bus.emit(Message("mycroft.skills.trained"))
+    # ── bus event handlers ────────────────────────────────────────────────────
 
-    # ── confidence-level matchers ────────────────────────────────────────────
+    def handle_register_vocab(self, message: Message) -> None:
+        """Register a keyword sample or regex entity from a skill.
 
-    def _match_level(self, utterances, limit, lang=None,
-                     message: Optional[Message] = None) -> Optional[IntentHandlerMatch]:
-        LOG.debug(f"Palavreado matching confidence > {limit}")
-        utterances = flatten_list(utterances)
-        lang = standardize_lang_tag(lang or self.lang)
-        intent = self.calc_intent(utterances, lang, message)
-        if intent is not None and intent.conf > limit:
-            skill_id = intent.name.split(":")[0]
-            return IntentHandlerMatch(
-                match_type=intent.name,
-                match_data=intent.matches,
-                skill_id=skill_id,
-                utterance=intent.sent,
-            )
+        Mirrors adapt's ``handle_register_vocab``.  Message data fields:
+        - ``entity_value``: the natural-language word/phrase
+        - ``entity_type``:  slot name the word belongs to
+        - ``alias_of``:     (optional) another entity type this aliases
+        - ``regex``:        (optional) raw regex string instead of a keyword
+        - ``lang``:         BCP-47 language tag
+        """
+        lang = standardize_lang_tag(get_message_lang(message))
+        lang = self._resolve_lang(lang)
+        if lang is None:
+            return
+
+        self.registered_vocab.append(message.data)
+
+        regex_str = message.data.get("regex")
+        if regex_str:
+            self._regexes[lang].append(regex_str)
+            return
+
+        entity_value = message.data.get("entity_value")
+        entity_type = message.data.get("entity_type")
+        alias_of = message.data.get("alias_of")
+        if not entity_value or not entity_type:
+            return
+
+        target_type = alias_of or entity_type
+        self._vocab[lang].setdefault(target_type, [])
+        if entity_value not in self._vocab[lang][target_type]:
+            self._vocab[lang][target_type].append(entity_value)
+
+    def handle_register_intent(self, message: Message) -> None:
+        """Build and register a palavreado intent from an adapt intent envelope.
+
+        Mirrors adapt's ``handle_register_intent``.  The intent envelope
+        (created with ``IntentBuilder``) carries ``requires``, ``optional``,
+        and ``at_least_one`` keyword-type lists that are resolved against the
+        accumulated vocab store.
+        """
+        intent = open_intent_envelope(message)
+        lang = standardize_lang_tag(get_message_lang(message))
+        lang = self._resolve_lang(lang)
+        if lang is None:
+            return
+
+        creator = IntentCreator(intent.name)
+
+        for kw_type, _ in (intent.requires or []):
+            samples = self._vocab[lang].get(kw_type, [])
+            creator.require(kw_type, samples)
+
+        for kw_type, _ in (intent.optional or []):
+            samples = self._vocab[lang].get(kw_type, [])
+            creator.optionally(kw_type, samples)
+
+        # at_least_one: treat each group as optional slots (best-effort)
+        for group in (intent.at_least_one or []):
+            for kw_type in group:
+                if kw_type not in creator.required and kw_type not in creator.optional:
+                    samples = self._vocab[lang].get(kw_type, [])
+                    creator.optionally(kw_type, samples)
+
+        container = self.containers[lang]
+        try:
+            container.add_intent(creator)
+        except RuntimeError:
+            # already registered (e.g. skill reload); skip silently
+            pass
+
+        self._registered_intents.append(intent.__dict__)
+
+    def handle_detach_intent(self, message: Message) -> None:
+        """Remove a single intent by name."""
+        intent_name = message.data.get("intent_name")
+        if not intent_name:
+            return
+        self._registered_intents = [i for i in self._registered_intents
+                                     if i.get("name") != intent_name]
+        for container in self.containers.values():
+            container.remove_intent(intent_name)
+
+    def handle_detach_skill(self, message: Message) -> None:
+        """Remove all intents and vocab belonging to a skill."""
+        skill_id = message.data.get("skill_id", "")
+        self._registered_intents = [i for i in self._registered_intents
+                                     if not i.get("name", "").startswith(skill_id)]
+        self.registered_vocab = [v for v in self.registered_vocab
+                                  if not v.get("entity_type", "").startswith(skill_id)]
+        for lang, vocab in self._vocab.items():
+            self._vocab[lang] = {k: v for k, v in vocab.items()
+                                 if not k.startswith(skill_id)}
+        for container in self.containers.values():
+            for intent_name in list(container.intent_names):
+                if intent_name.startswith(skill_id):
+                    container.remove_intent(intent_name)
+
+    def handle_get_palavreado(self, message: Message) -> None:
+        """Return the best intent match for a single utterance (debug/introspection)."""
+        utterance = message.data["utterance"]
+        lang = get_message_lang(message)
+        result = self.calc_intent([utterance], lang, message)
+        intent_data = result.match_data if result else None
+        self.bus.emit(message.reply("intent.service.palavreado.reply",
+                                    {"intent": intent_data}))
+
+    def handle_palavreado_manifest(self, message: Message) -> None:
+        """Send list of registered intents to caller."""
+        self.bus.emit(message.reply("intent.service.palavreado.manifest",
+                                    {"intents": self._registered_intents}))
+
+    def handle_vocab_manifest(self, message: Message) -> None:
+        """Send registered vocabulary list to caller."""
+        self.bus.emit(message.reply("intent.service.palavreado.vocab.manifest",
+                                    {"vocab": self.registered_vocab}))
+
+    # ── confidence-level matchers ─────────────────────────────────────────────
 
     def match_high(self, utterances: List[str], lang: str,
                    message: Message) -> Optional[IntentHandlerMatch]:
-        return self._match_level(utterances, self.conf_high, lang, message)
+        match = self._match_intent(tuple(flatten_list(utterances)), lang,
+                                   message.serialize())
+        if match and match.match_data.get("conf", 0) >= self.conf_high:
+            return match
+        return None
 
     def match_medium(self, utterances: List[str], lang: str,
                      message: Message) -> Optional[IntentHandlerMatch]:
-        return self._match_level(utterances, self.conf_med, lang, message)
+        match = self._match_intent(tuple(flatten_list(utterances)), lang,
+                                   message.serialize())
+        if match and match.match_data.get("conf", 0) >= self.conf_med:
+            return match
+        return None
 
     def match_low(self, utterances: List[str], lang: str,
                   message: Message) -> Optional[IntentHandlerMatch]:
-        return self._match_level(utterances, self.conf_low, lang, message)
+        match = self._match_intent(tuple(flatten_list(utterances)), lang,
+                                   message.serialize())
+        if match and match.match_data.get("conf", 0) >= self.conf_low:
+            return match
+        return None
 
-    # ── registration ─────────────────────────────────────────────────────────
+    # ── intent calculation ────────────────────────────────────────────────────
 
-    def _register_object(self, message: Message, object_name: str,
-                         register_func) -> None:
-        file_name = message.data.get("file_name")
-        samples = message.data.get("samples")
-        name = message.data["name"]
-        LOG.debug(f"Registering Palavreado {object_name}: {name}")
-
-        if (not file_name or not isfile(file_name)) and not samples:
-            LOG.error(f"Could not find file {file_name!r}")
-            return
-
-        if not samples and isfile(file_name):
-            with open(file_name) as f:
-                samples = [line.strip() for line in f if line.strip()]
-
-        register_func(name, samples)
-
-    def register_intent(self, message: Message) -> None:
-        """Messagebus handler for ``padatious:register_intent``."""
-        lang = standardize_lang_tag(message.data.get("lang", self.lang))
-        if lang not in self.containers:
-            return
-        name = message.data["name"]
-        self.registered_intents.append(name)
-        try:
-            self._register_object(message, "intent",
-                                  self.containers[lang].add_intent)
-        except RuntimeError:
-            # skill reload — intent already registered, skip silently
-            if name not in self.containers[lang].intent_names:
-                raise
-
-    def register_entity(self, message: Message) -> None:
-        """Messagebus handler for ``padatious:register_entity``."""
-        lang = standardize_lang_tag(message.data.get("lang", self.lang))
-        if lang not in self.containers:
-            return
-        self.registered_entities.append(message.data)
-
-    # ── detach ───────────────────────────────────────────────────────────────
-
-    def _detach_intent(self, intent_name: str) -> None:
-        if intent_name in self.registered_intents:
-            self.registered_intents.remove(intent_name)
-            for container in self.containers.values():
-                container.remove_intent(intent_name)
-
-    def handle_detach_intent(self, message: Message) -> None:
-        """Messagebus handler for ``detach_intent``."""
-        self._detach_intent(message.data.get("intent_name"))
-
-    def handle_detach_skill(self, message: Message) -> None:
-        """Messagebus handler for ``detach_skill``."""
-        skill_id = message.data["skill_id"]
-        for intent_name in [i for i in self.registered_intents if i.startswith(skill_id)]:
-            self._detach_intent(intent_name)
-
-    # ── intent calculation ───────────────────────────────────────────────────
-
-    def calc_intent(self, utterances: List[str], lang: str = None,
-                    message: Optional[Message] = None) -> Optional[PalavreadoIntent]:
-        """Return the best-matching intent across all *utterances*.
+    @lru_cache(maxsize=128)
+    def _match_intent(self, utterances: tuple, lang: Optional[str] = None,
+                      message: Optional[str] = None) -> Optional[IntentHandlerMatch]:
+        """Match utterances against registered intents, honouring session blacklists.
 
         Args:
-            utterances: One or more ASR hypotheses.
-            lang: BCP-47 language tag; defaults to the configured primary lang.
-            message: OVOS bus message (used to read session blacklists).
+            utterances: Tuple of ASR hypotheses (hashable for lru_cache).
+            lang: BCP-47 language tag.
+            message: Serialised :class:`Message` string (for session lookup).
 
         Returns:
-            A :class:`PalavreadoIntent` or ``None`` when nothing matches.
+            Best-matching :class:`IntentHandlerMatch` or ``None``.
         """
-        if isinstance(utterances, str):
-            utterances = [utterances]
-        utterances = [u for u in utterances if len(u.split()) < self.max_words]
-        if not utterances:
+        if message:
+            message = Message.deserialize(message)
+        sess = SessionManager.get(message)
+
+        utts = [u for u in utterances if len(u.split()) < self.max_words]
+        if not utts:
             LOG.error(f"All utterances exceed max_words={self.max_words}, skipping")
             return None
 
-        lang = self._get_closest_lang(lang or self.lang)
+        lang = self._resolve_lang(lang or self.lang)
         if lang is None:
             return None
 
-        sess = SessionManager.get(message)
         container = self.containers[lang]
+        best = None
+        best_conf = -1.0
 
-        results = [_calc_palavreado_intent(utt, container, sess) for utt in utterances]
-        results = [r for r in results if r is not None]
-        return max(results, key=lambda r: r.conf) if results else None
+        for utt in utts:
+            result = _calc_palavreado_intent(utt, container, sess)
+            if result and result["conf"] > best_conf:
+                best_conf = result["conf"]
+                best = result
 
-    def _get_closest_lang(self, lang: str) -> Optional[str]:
+        if not best:
+            return None
+
+        skill_id = best["name"].split(":")[0]
+        return IntentHandlerMatch(
+            match_type=best["name"],
+            match_data=best,
+            skill_id=skill_id,
+            utterance=best["utterance"],
+        )
+
+    def calc_intent(self, utterances: List[str], lang: str = None,
+                    message: Optional[Message] = None) -> Optional[IntentHandlerMatch]:
+        """Public helper returning the best match for *utterances*."""
+        return self._match_intent(tuple(flatten_list(utterances)),
+                                  lang or self.lang,
+                                  message.serialize() if message else None)
+
+    def _resolve_lang(self, lang: str) -> Optional[str]:
         if not self.containers:
             return None
         lang = standardize_lang_tag(lang)
@@ -213,18 +279,24 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         return closest if score < 10 else None
 
     def shutdown(self) -> None:
-        self.bus.remove("padatious:register_intent", self.register_intent)
-        self.bus.remove("padatious:register_entity", self.register_entity)
+        self.bus.remove("register_vocab", self.handle_register_vocab)
+        self.bus.remove("register_intent", self.handle_register_intent)
         self.bus.remove("detach_intent", self.handle_detach_intent)
         self.bus.remove("detach_skill", self.handle_detach_skill)
-        self.bus.remove("mycroft.skills.train", self.train)
+        self.bus.remove("intent.service.palavreado.get", self.handle_get_palavreado)
+        self.bus.remove("intent.service.palavreado.manifest.get", self.handle_palavreado_manifest)
+        self.bus.remove("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
 
 
 @lru_cache(maxsize=128)
 def _calc_palavreado_intent(utt: str,
                              container: IntentContainer,
-                             sess: Session) -> Optional[PalavreadoIntent]:
-    """Match one utterance against *container*, honouring session blacklists."""
+                             sess: Session) -> Optional[dict]:
+    """Match *utt* against *container*, honouring session blacklists.
+
+    Returns the raw result dict from :meth:`IntentContainer.calc_intent`,
+    or ``None`` if nothing matched or the match is blacklisted.
+    """
     try:
         result = container.calc_intent(utt)
         if not result.get("name"):
@@ -233,12 +305,7 @@ def _calc_palavreado_intent(utt: str,
             return None
         if result["name"].split(":")[0] in sess.blacklisted_skills:
             return None
-        return PalavreadoIntent(
-            name=result["name"],
-            sent=utt,
-            conf=result["conf"],
-            matches=result.get("keywords", {}),
-        )
+        return result
     except Exception as e:
         LOG.error(e)
         return None

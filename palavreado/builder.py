@@ -113,7 +113,8 @@ class IntentCreator:
         """
         if keyword_name not in self.required:
             self.required[keyword_name] = []
-        keyword_samples = expand_samples(keyword_samples)
+        if isinstance(keyword_samples, str):
+            keyword_samples = [keyword_samples]
         if keyword_name not in self.regexes:
             self.regexes[keyword_name] = []
         self.regexes[keyword_name] += keyword_samples
@@ -132,7 +133,8 @@ class IntentCreator:
         """
         if keyword_name not in self.optional:
             self.optional[keyword_name] = []
-        keyword_samples = expand_samples(keyword_samples)
+        if isinstance(keyword_samples, str):
+            keyword_samples = [keyword_samples]
         if keyword_name not in self.regexes:
             self.regexes[keyword_name] = []
         self.regexes[keyword_name] += keyword_samples

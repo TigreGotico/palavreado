@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "palavreado"
@@ -36,5 +36,8 @@ palavreado = "palavreado.opm:PalavreadoPipeline"
 [project.urls]
 Homepage = "https://github.com/TigreGotico/palavreado"
 
-[tool.hatch.version]
-path = "palavreado/version.py"
+[tool.setuptools.dynamic]
+version = {attr = "palavreado.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]

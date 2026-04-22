@@ -61,19 +61,18 @@ class TestIntentCreator(unittest.TestCase):
                           'regex': {'fruit': ['^eat\\ (?P<fruit>.*)$',
                                               '^eat\\ some\\ (?P<fruit>.*)$',
                                               '^munch\\ on\\ some\\ (?P<fruit>.*)$',
-                                              '^munch\\ on\\ \\ (?P<fruit>.*)$']},
+                                              '^munch\\ on\\ (?P<fruit>.*)$']},
                           'required': {'eat': ['eat', 'munch on']}})
 
     def test_regex(self):
-        rx = r'*\b(at|in|for) (?P<Location>.*)'
+        # raw regexes are stored as-is — no bracket expansion
+        rx = r'\b(at|in|for) (?P<Location>.*)'
         intent = IntentCreator("time_in_location"). \
             require_regex("Location", rx).require("time", ["time"])
         self.assertEqual(intent.build(),
                          {'intent_name': 'time_in_location',
                           'optional': {},
-                          'regex': {'Location': [r'*\bat (?P<Location>.*)',
-                                                 r'*\bin (?P<Location>.*)',
-                                                 r'*\bfor (?P<Location>.*)']},
+                          'regex': {'Location': [rx]},
                           'required': {'Location': [], 'time': ['time']}})
 
 

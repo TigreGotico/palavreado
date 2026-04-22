@@ -13,8 +13,8 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(container.intents["hello_world"],
                          {'intent_name': 'hello_world',
-                          'required': {'hello': ['hello world', 'hi world',
-                                                 'hey world']},
+                          'required': {'hello': sorted(['hello world', 'hi world',
+                                                        'hey world'])},
                           'optional': {},
                           'regex': {}})
 
@@ -23,7 +23,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(container.intents["hello"],
                          {'intent_name': 'hello',
-                          'required': {'hello': ['hello world', 'hello']},
+                          'required': {'hello': ['hello', 'hello world']},
                           'optional': {}, 'regex': {}})
 
         intent = IntentCreator("hey"). \
@@ -31,7 +31,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(container.intents["hey"],
                          {'intent_name': 'hey',
-                          'required': {'hello': ['hey world', 'hey']},
+                          'required': {'hello': ['hey', 'hey world']},
                           'optional': {}, 'regex': {}})
 
     # test intent parsing
@@ -76,19 +76,19 @@ class TestIntentContainer(unittest.TestCase):
                           'utterance_remainder': ''})
 
         self.assertEqual(container.calc_intent('buy milk'),
-                         {'conf': 0.85,
+                         {'conf': 0.875,
                           'keywords': {'item': ['milk']},
                           'name': 'buy',
                           'utterance': 'buy milk',
                           'utterance_remainder': 'buy'})
         self.assertEqual(container.calc_intent('buy beer'),
-                         {'conf': 0.85,
+                         {'conf': 0.875,
                           'keywords': {'item': ['beer']},
                           'name': 'buy',
                           'utterance': 'buy beer',
                           'utterance_remainder': 'buy'})
         self.assertEqual(container.calc_intent('eat some bananas'),
-                         {'conf': 0.8333333333333334,
+                         {'conf': 0.8333,
                           'keywords': {'fruit': ['bananas']},
                           'name': 'eat',
                           'utterance': 'eat some bananas',
@@ -105,7 +105,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('what time is it in London'),
-            {'conf': 0.8833333333333333,
+            {'conf': 0.8833,
              'keywords': {'Location': ['London'], 'time': ['time']},
              'name': 'time_in_location',
              'utterance': 'what time is it in London',
@@ -121,7 +121,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('I see a bin in there'),
-            {'conf': 0.8333333333333334,
+            {'conf': 0.8333,
              'keywords': {'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin in there',
@@ -136,7 +136,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(
             container.calc_intent('I see a bin'),
-            {'conf': 0.85,
+            {'conf': 0.875,
              'keywords': {'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin',
@@ -144,7 +144,7 @@ class TestIntentContainer(unittest.TestCase):
         )
         self.assertEqual(
             container.calc_intent('I see a bin in there'),
-            {'conf': 0.88,
+            {'conf': 0.955,
              'keywords': {'place': ['there'], 'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin in there',
@@ -160,7 +160,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('i want nuMBer 3'),
-            {'conf': 0.85,
+            {'conf': 0.875,
              'keywords': {'number': ['3']},
              'name': 'test_int',
              'utterance': 'i want nuMBer 3',
@@ -172,7 +172,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(
             container.calc_intent('i want float 3.5'),
-            {'conf': 0.825,
+            {'conf': 0.8125,
              'keywords': {'number': ['3.5']},
              'name': 'test_float',
              'utterance': 'i want float 3.5',
@@ -187,7 +187,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(
             container.calc_intent('turn off the light and close the door'),
-            {'conf': 0.9375,
+            {'conf': 0.9438,
              'keywords': {'light': ['light'], 'off': ['off', 'close']},
              'name': 'lights_off',
              'utterance': 'turn off the light and close the door',
@@ -195,7 +195,7 @@ class TestIntentContainer(unittest.TestCase):
         )
         self.assertEqual(
             container.calc_intent('turn off the lights and close the door'),
-            {'conf': 0.9375,
+            {'conf': 0.9438,
              'keywords': {'light': ['light'], 'off': ['off', 'close']},
              'name': 'lights_off',
              'utterance': 'turn off the lights and close the door',
