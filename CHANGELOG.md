@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0a1](https://github.com/TigreGotico/palavreado/tree/1.0.0a1) (2026-04-22)
+
+[Full Changelog](https://github.com/TigreGotico/palavreado/compare/0.2.1a1...1.0.0a1)
+
+**Breaking changes:**
+
+- feat!: modernize palavreado — accuracy engine, benchmark, opm rewrite, normalisation [\#8](https://github.com/TigreGotico/palavreado/pull/8) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.2.1a1](https://github.com/TigreGotico/palavreado/tree/0.2.1a1) (2025-12-20)
 
 [Full Changelog](https://github.com/TigreGotico/palavreado/compare/0.1.0...0.2.1a1)
