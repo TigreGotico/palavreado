@@ -63,7 +63,7 @@ class TestIntentContainer(unittest.TestCase):
                           'utterance': 'hello world',
                           'utterance_remainder': ''})
         self.assertEqual(container.calc_intent('hello bob'),
-                         {'conf': 0.9666666666666667,
+                         {'conf': 0.95,
                           'keywords': {'hello': ['hello']},
                           'name': 'hello',
                           'utterance': 'hello bob',
@@ -76,19 +76,19 @@ class TestIntentContainer(unittest.TestCase):
                           'utterance_remainder': ''})
 
         self.assertEqual(container.calc_intent('buy milk'),
-                         {'conf': 0.8625,
+                         {'conf': 0.85,
                           'keywords': {'item': ['milk']},
                           'name': 'buy',
                           'utterance': 'buy milk',
                           'utterance_remainder': 'buy'})
         self.assertEqual(container.calc_intent('buy beer'),
-                         {'conf': 0.8625,
+                         {'conf': 0.85,
                           'keywords': {'item': ['beer']},
                           'name': 'buy',
                           'utterance': 'buy beer',
                           'utterance_remainder': 'buy'})
         self.assertEqual(container.calc_intent('eat some bananas'),
-                         {'conf': 0.85,
+                         {'conf': 0.8333333333333334,
                           'keywords': {'fruit': ['bananas']},
                           'name': 'eat',
                           'utterance': 'eat some bananas',
@@ -105,7 +105,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('what time is it in London'),
-            {'conf': 0.8979999999999999,
+            {'conf': 0.8833333333333333,
              'keywords': {'Location': ['London'], 'time': ['time']},
              'name': 'time_in_location',
              'utterance': 'what time is it in London',
@@ -121,7 +121,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('I see a bin in there'),
-            {'conf': 0.8300000000000001,
+            {'conf': 0.8333333333333334,
              'keywords': {'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin in there',
@@ -136,7 +136,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(
             container.calc_intent('I see a bin'),
-            {'conf': 0.8545454545454546,
+            {'conf': 0.85,
              'keywords': {'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin',
@@ -144,7 +144,7 @@ class TestIntentContainer(unittest.TestCase):
         )
         self.assertEqual(
             container.calc_intent('I see a bin in there'),
-            {'conf': 1.0,
+            {'conf': 0.88,
              'keywords': {'place': ['there'], 'thing': ['a bin']},
              'name': 'test',
              'utterance': 'I see a bin in there',
@@ -160,7 +160,7 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('i want nuMBer 3'),
-            {'conf': 0.8133333333333334,
+            {'conf': 0.825,
              'keywords': {'number': ['3']},
              'name': 'test_int',
              'utterance': 'i want nuMBer 3',
@@ -187,7 +187,7 @@ class TestIntentContainer(unittest.TestCase):
         container.add_intent(intent)
         self.assertEqual(
             container.calc_intent('turn off the light and close the door'),
-            {'conf': 0.9432432432432433,
+            {'conf': 0.9375,
              'keywords': {'light': ['light'], 'off': ['off', 'close']},
              'name': 'lights_off',
              'utterance': 'turn off the light and close the door',
@@ -195,7 +195,7 @@ class TestIntentContainer(unittest.TestCase):
         )
         self.assertEqual(
             container.calc_intent('turn off the lights and close the door'),
-            {'conf': 0.9447368421052631,
+            {'conf': 0.9375,
              'keywords': {'light': ['lights'], 'off': ['off', 'close']},
              'name': 'lights_off',
              'utterance': 'turn off the lights and close the door',
