@@ -1,3 +1,13 @@
+"""
+Bracket/parenthesis expansion for palavreado sample strings.
+
+Converts patterns like ``"(hello|hi) world"`` into a list of all possible
+expansions: ``["hello world", "hi world"]``.  Square brackets denote optional
+sections: ``"hey [world]"`` → ``["hey world", "hey"]``.
+"""
+from typing import List
+
+
 class TreeFragment:
     """(Abstract) empty sentence fragment"""
 
@@ -166,7 +176,7 @@ class SentenceTreeParser:
         return tree.expand()
 
 
-def expand_parentheses(sent):
+def expand_parentheses(sent: str) -> List[str]:
     """
     ['1', '(', '2', '|', '3, ')'] -> [['1', '2'], ['1', '3']]
     For example:

@@ -1,5 +1,13 @@
+"""
+palavreado — dead-simple keyword-based intent parser for OVOS voice assistants.
+
+Provides :class:`IntentContainer` for registering and matching intents built
+with :class:`~palavreado.builder.IntentCreator`.
+"""
 import re
 import logging
+from typing import Dict, Iterator, List, Optional, Union
+
 from palavreado.bracket_expansion import expand_parentheses
 from palavreado.builder import IntentCreator
 from quebra_frases.chunks import chunk
@@ -8,7 +16,20 @@ from quebra_frases import word_tokenize, get_exclusive_tokens, flatten
 LOG = logging.getLogger('palavreado')
 
 
-def get_utterance_remainder(utterance, samples, as_string=True):
+def get_utterance_remainder(utterance: str,
+                            samples: List[str],
+                            as_string: bool = True) -> Union[str, List[str]]:
+    """Return the portion of *utterance* not covered by any sample token.
+
+    Args:
+        utterance: The full utterance string.
+        samples: Keyword/entity samples that were matched.
+        as_string: When ``True`` (default) return a single space-joined
+            string; otherwise return a list of token strings.
+
+    Returns:
+        Remainder as a string or list of strings depending on *as_string*.
+    """
     chunks = flatten([word_tokenize(s) for s in samples])
     words = [t for t in word_tokenize(utterance) if t not in chunks]
     if as_string:
@@ -17,11 +38,30 @@ def get_utterance_remainder(utterance, samples, as_string=True):
 
 
 class IntentContainer:
-    def __init__(self):
-        self.intents = {}
+    """Container that holds registered intents and performs keyword matching.
+
+    Intents are registered via :meth:`add_intent` (accepting either an
+    :class:`~palavreado.builder.IntentCreator` or the dict produced by
+    ``IntentCreator.build()``) and matched against utterances with
+    :meth:`calc_intent` / :meth:`calc_intents`.
+    """
+
+    def __init__(self) -> None:
+        """Initialise an empty container with no registered intents."""
+        self.intents: Dict[str, dict] = {}
 
     # build with IntentCreator
-    def add_intent(self, intent):
+    def add_intent(self, intent: Union[IntentCreator, dict]) -> None:
+        """Register a new intent.
+
+        Args:
+            intent: An :class:`~palavreado.builder.IntentCreator` instance or
+                the raw dict produced by ``IntentCreator.build()``.
+
+        Raises:
+            RuntimeError: If an intent with the same name has already been
+                registered.  Remove it first with :meth:`remove_intent`.
+        """
         if isinstance(intent, IntentCreator):
             intent = intent.build()
         if intent["intent_name"] in self.intents:
@@ -29,7 +69,15 @@ class IntentContainer:
                                "Remove it first before re-adding.")
         self.intents[intent["intent_name"]] = intent
 
-    def remove_intent(self, name):
+    def remove_intent(self, name: Union[str, IntentCreator, dict]) -> None:
+        """Unregister an intent by name, creator object, or built dict.
+
+        Silently does nothing when the intent is not found.
+
+        Args:
+            name: The intent name string, an :class:`~palavreado.builder.IntentCreator`,
+                or a dict with an ``"intent_name"`` or ``"name"`` key.
+        """
         if isinstance(name, IntentCreator):
             name = name.build()
         if isinstance(name, dict):
@@ -38,7 +86,20 @@ class IntentContainer:
             del self.intents[name]
 
     # intent api
-    def calc_intents(self, query):
+    def calc_intents(self, query: str) -> Iterator[dict]:
+        """Yield scored match results for every intent that matches *query*.
+
+        Only intents with a confidence > 0 are yielded.  Each result is a
+        dict with keys ``name``, ``conf``, ``keywords``, ``utterance``, and
+        ``utterance_remainder``.
+
+        Args:
+            query: The utterance to match against all registered intents.
+
+        Yields:
+            Match result dicts ordered by registration, not by confidence.
+            Use :meth:`calc_intent` to obtain the single best match.
+        """
 
         def _match(kw_samples):
             # HACK around chunk function limitations
@@ -150,7 +211,18 @@ class IntentContainer:
                        "utterance": query,
                        "name": intent_name}
 
-    def calc_intent(self, query):
+    def calc_intent(self, query: str) -> dict:
+        """Return the single best-matching intent result for *query*.
+
+        Args:
+            query: The utterance to match.
+
+        Returns:
+            The highest-confidence match dict (keys: ``name``, ``conf``,
+            ``keywords``, ``utterance``, ``utterance_remainder``).  When no
+            intent matches, returns a result dict with ``name=None`` and
+            ``conf=0``.
+        """
         return max(
             self.calc_intents(query),
             key=lambda x: x["conf"],
