@@ -266,12 +266,12 @@ Evaluated on a keyword-intent dataset of **284 cases** (217 match utterances acr
 
 | Engine | Accuracy | Precision | Recall | F1 | TN / no-match | FP | Median latency |
 |---|---|---|---|---|---|---|---|
-| **palavreado** | **82.0%** | 84.0% | **94.5%** | **0.889** | 28 / 67 | 39 | 0.54 ms |
-| adapt | 79.6% | **84.7%** | 89.4% | 0.870 | **32 / 67** | **35** | **0.19 ms** |
+| **palavreado** | **81.7%** | 80.6% | **94.0%** | **0.868** | 28 / 67 | 49 | 0.58 ms |
+| adapt | 80.3% | **81.0%** | 90.3% | 0.854 | **32 / 67** | **46** | **0.20 ms** |
 
 **TN / no-match** = utterances that correctly returned *no intent* out of the 67 no-match cases.
 
-Palavreado beats Adapt on accuracy, recall, and F1, but Adapt bails out more conservatively (32 vs 28 correct no-matches).  Both engines share the same fundamental limitation of keyword-based matching: a vocabulary word appearing incidentally in an off-topic sentence triggers a false positive.  The high FP rate (58% / 52% of no-match cases) reflects real hardness in the dataset — keyword parsers have no grammatical or pragmatic context, so past-tense, rhetorical, and third-person uses of vocabulary words are indistinguishable from commands.
+Palavreado beats Adapt on accuracy, recall, and F1, but Adapt bails out more conservatively (32 vs 28 correct no-matches).  Both engines share the same fundamental limitation of keyword-based matching: a vocabulary word appearing incidentally in an off-topic sentence triggers a false positive.  The high FP rate reflects real hardness in the dataset — keyword parsers have no grammatical or pragmatic context, so past-tense, rhetorical, and third-person uses of vocabulary words are indistinguishable from commands.
 
 Run the benchmark yourself:
 
