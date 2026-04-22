@@ -153,8 +153,8 @@ class IntentContainer:
                 or a dict with an ``"intent_name"`` or ``"name"`` key.
         """
         if isinstance(name, IntentCreator):
-            name = name.build()
-        if isinstance(name, dict):
+            name = name.name  # read the name directly — avoids a wasteful .build() call
+        elif isinstance(name, dict):
             name = name.get("intent_name") or name.get("name")
         self.intents.pop(name, None)
         self._compiled.pop(name, None)

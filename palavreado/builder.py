@@ -110,6 +110,12 @@ class IntentCreator:
 
         Returns:
             ``self`` for chaining.
+
+        Note:
+            An empty list is intentionally inserted into ``self.required`` so
+            that the slot is counted in the ``partial_conf`` denominator in
+            ``calc_intents``.  The actual pattern matching happens in the
+            separate regex loop; the keyword-sample loop skips empty lists.
         """
         if keyword_name not in self.required:
             self.required[keyword_name] = []
@@ -130,6 +136,12 @@ class IntentCreator:
 
         Returns:
             ``self`` for chaining.
+
+        Note:
+            An empty list is intentionally inserted into ``self.optional`` so
+            that the slot is counted in the ``partial_opt_conf`` denominator
+            in ``calc_intents``.  Pattern matching happens in the regex loop;
+            the keyword-sample loop skips empty lists.
         """
         if keyword_name not in self.optional:
             self.optional[keyword_name] = []
@@ -154,6 +166,12 @@ class IntentCreator:
 
         Returns:
             ``self`` for chaining.
+
+        Note:
+            An empty list is intentionally inserted into ``self.required`` for
+            the same reason as :meth:`require_regex` — to count the slot in
+            the ``partial_conf`` denominator even though samples are processed
+            in the regex loop.
         """
         if keyword_name not in self.required:
             self.required[keyword_name] = []
@@ -178,6 +196,12 @@ class IntentCreator:
 
         Returns:
             ``self`` for chaining.
+
+        Note:
+            An empty list is intentionally inserted into ``self.optional`` for
+            the same reason as :meth:`optional_regex` — to count the slot in
+            the ``partial_opt_conf`` denominator even though samples are
+            processed in the regex loop.
         """
         if keyword_name not in self.optional:
             self.optional[keyword_name] = []

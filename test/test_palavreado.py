@@ -261,6 +261,13 @@ class TestIntentContainer(unittest.TestCase):
         container.remove_intent(built)
         self.assertNotIn("greet", container.intents)
 
+    def test_remove_intent_via_creator(self):
+        container = IntentContainer()
+        creator = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(creator)
+        container.remove_intent(creator)
+        self.assertNotIn("greet", container.intents)
+
     def test_optional_keyword_boosts_conf(self):
         container = IntentContainer()
         intent = IntentCreator("greet") \

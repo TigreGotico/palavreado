@@ -15,15 +15,20 @@ from typing import List
 import re
 
 
-def expand_parentheses(sent: str) -> list:
-    """
-    Expand a template string with (a|b) alternatives and [optional] syntax
+def expand_parentheses(sent: str) -> List[str]:
+    """Expand a template string with ``(a|b)`` alternatives and ``[optional]`` syntax
     into all possible combinations.
 
+    Args:
+        sent: A pattern string containing ``(a|b)`` alternations and/or
+            ``[optional]`` sections.
+
+    Returns:
+        A flat list of all expanded sentence strings, sorted for determinism.
+
     Examples:
-        "Will it (rain|pour) [today]?" ->
-            ["Will it rain today?", "Will it rain?",
-             "Will it pour today?", "Will it pour?"]
+        >>> expand_parentheses("Will it (rain|pour) [today]?")
+        ["Will it pour?", "Will it pour today?", "Will it rain?", "Will it rain today?"]
     """
     def _expand_optional(text):
         return re.sub(r"\[([^\[\]]+)\]", lambda m: f"({m.group(1)}|)", text)

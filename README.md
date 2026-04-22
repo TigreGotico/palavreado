@@ -114,6 +114,22 @@ All builder methods return `self` for fluent chaining.  The result of `build()` 
 
 ---
 
+## Breaking changes
+
+**`add_intent` raises `RuntimeError` on duplicate names.**  
+Previously, registering the same intent name twice silently overwrote the first entry.
+Now a `RuntimeError` is raised so accidental double-registration is caught early.
+
+Callers that re-register intents (e.g. on skill reload) must call
+`remove_intent` first:
+
+```python
+container.remove_intent("my_intent")   # no-op if not present
+container.add_intent(new_creator)
+```
+
+---
+
 ## `IntentContainer` API
 
 | Method / property | Description |
