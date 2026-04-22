@@ -24,13 +24,16 @@ class IntentContainer:
     def add_intent(self, intent):
         if isinstance(intent, IntentCreator):
             intent = intent.build()
+        if intent["intent_name"] in self.intents:
+            raise RuntimeError(f"Intent '{intent['intent_name']}' is already registered. "
+                               "Remove it first before re-adding.")
         self.intents[intent["intent_name"]] = intent
 
     def remove_intent(self, name):
         if isinstance(name, IntentCreator):
             name = name.build()
         if isinstance(name, dict):
-            name = name["name"]
+            name = name.get("intent_name") or name.get("name")
         if name in self.intents:
             del self.intents[name]
 

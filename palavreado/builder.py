@@ -11,8 +11,8 @@ def expand_samples(samples):
     if isinstance(samples, str):
         samples = [samples]
     expanded = []
-    for l in samples:
-        expanded += expand_parentheses(l)
+    for line in samples:
+        expanded += expand_parentheses(line)
     return expanded
 
 
