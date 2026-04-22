@@ -90,12 +90,15 @@ class IntentContainer:
         """Initialise an empty container with no registered intents."""
         self.intents: Dict[str, dict] = {}
         self._compiled: Dict[str, Dict[str, re.Pattern]] = {}
+        self._sorted_regex: Dict[str, Dict[str, list]] = {}
         # context gating
         self.available_contexts: Dict[str, Dict[str, object]] = {}
         self.required_contexts: Dict[str, List[str]] = {}
         self.excluded_contexts: Dict[str, List[str]] = {}
-        # keyword exclusion
+        # keyword exclusion — raw lists and pre-compiled regexes
         self.excluded_keywords: Dict[str, List[str]] = {}
+        # pre-compiled exclusion patterns: {intent: [(kw_lower, compiled|None), ...]}
+        self._compiled_exclusions: Dict[str, list] = {}
 
     # ── properties ──────────────────────────────────────────────────────────
 
@@ -142,6 +145,11 @@ class IntentContainer:
             for patterns in intent["regex"].values()
             for rx in patterns
         }
+        # pre-sort regex patterns by length (longest first) once at registration
+        self._sorted_regex[name] = {
+            slot: sorted(patterns, key=len, reverse=True)
+            for slot, patterns in intent["regex"].items()
+        }
 
     def remove_intent(self, name: Union[str, IntentCreator, dict]) -> None:
         """Unregister an intent by name, creator object, or built dict.
@@ -158,6 +166,7 @@ class IntentContainer:
             name = name.get("intent_name") or name.get("name")
         self.intents.pop(name, None)
         self._compiled.pop(name, None)
+        self._sorted_regex.pop(name, None)
 
     # ── context gating ───────────────────────────────────────────────────────
 
@@ -207,6 +216,11 @@ class IntentContainer:
         """
         self.excluded_keywords.setdefault(intent_name, [])
         self.excluded_keywords[intent_name] += samples
+        compiled = self._compiled_exclusions.setdefault(intent_name, [])
+        for kw in samples:
+            kw_lower = kw.lower()
+            rx = re.compile(r"\b" + re.escape(kw_lower) + r"\b", re.IGNORECASE) if " " in kw else None
+            compiled.append((kw_lower, rx))
 
     # ── internal filtering ───────────────────────────────────────────────────
 
@@ -215,13 +229,12 @@ class IntentContainer:
         excluded: List[str] = []
         query_words = set(query.lower().split())
 
-        for intent_name, keywords in self.excluded_keywords.items():
-            def _hit(kw: str, _qw=query_words, _q=query) -> bool:
-                if " " not in kw:
-                    return kw.lower() in _qw
-                return bool(re.search(r"\b" + re.escape(kw.lower()) + r"\b", _q, re.IGNORECASE))
-            if any(_hit(kw) for kw in keywords):
-                excluded.append(intent_name)
+        for intent_name, kw_patterns in self._compiled_exclusions.items():
+            for kw_lower, rx in kw_patterns:
+                hit = rx.search(query) if rx else kw_lower in query_words
+                if hit:
+                    excluded.append(intent_name)
+                    break
 
         for intent_name, contexts in self.required_contexts.items():
             active = self.available_contexts.get(intent_name, {})
@@ -254,9 +267,9 @@ class IntentContainer:
         query = normalize_utterance(query)
         excluded = self._filter(query)
         q_words = _word_count(query)
-        query_lemmas = {lemmatize(t) for t in _tokenize(query)}
-        # build lemma query once — reused by every intent
-        lemma_query = " ".join(lemmatize(t) for t in _tokenize(query))
+        _query_lemma_list = [lemmatize(t) for t in _tokenize(query)]
+        query_lemmas = set(_query_lemma_list)
+        lemma_query = " ".join(_query_lemma_list)
 
         def _match(kw_samples: List[str]) -> tuple:
             """Return ``(matched_keywords, quality)`` where quality ∈ (0, 1].
@@ -270,12 +283,15 @@ class IntentContainer:
             """
             single_cands: List[str] = []
             multi_cands: List[str] = []
+            _w_lemma: Dict[str, str] = {}  # cache: w → lemmatized form
             for w in kw_samples:
                 toks = _tokenize(w)
+                lemmas = [lemmatize(t) for t in toks]
+                _w_lemma[w] = " ".join(lemmas)
                 if len(toks) == 1:
-                    if lemmatize(toks[0]) in query_lemmas:
+                    if lemmas[0] in query_lemmas:
                         single_cands.append(w)
-                elif all(lemmatize(t) in query_lemmas for t in toks):
+                elif all(lem in query_lemmas for lem in lemmas):
                     multi_cands.append(w)
 
             candidates = single_cands + multi_cands
@@ -288,8 +304,8 @@ class IntentContainer:
             if matched:
                 return sorted(matched, key=lambda x: len(x.split()), reverse=True), 1.0
 
-            # Pass 2: contiguous match on lemma-normalised query.
-            lemma_map = {" ".join(lemmatize(t) for t in _tokenize(w)): w for w in candidates}
+            # Pass 2: contiguous match on lemma-normalised query (reuse cached lemmas).
+            lemma_map = {_w_lemma[w]: w for w in candidates}
             matched_lemmas = [c for c in chunk(lemma_query, list(lemma_map)) if c in lemma_map]
             if matched_lemmas:
                 result = sorted([lemma_map[lm] for lm in matched_lemmas],
@@ -316,10 +332,10 @@ class IntentContainer:
             compiled = self._compiled[intent_name]
 
             # ── regex slots ───────────────────────────────────────────────────
-            for kw, kw_patterns in intent["regex"].items():
+            for kw, kw_patterns in self._sorted_regex[intent_name].items():
                 if not kw_patterns:
                     continue
-                for rx in sorted(kw_patterns, key=len, reverse=True):
+                for rx in kw_patterns:
                     m = compiled[rx].match(query) or compiled[rx].search(query)
                     if m:
                         result = {k: v for k, v in m.groupdict().items() if v is not None}
@@ -367,12 +383,16 @@ class IntentContainer:
 
             conf = _score(conf, remainder, q_words, len(matches), n_req + n_opt)
             if conf > 0:
+                _mw = sum(_word_count(kw) for kws in matches.values() for kw in kws)
+                _rw = _word_count(remainder)
                 yield {
                     "keywords": matches,
                     "conf": conf,
                     "utterance_remainder": remainder,
                     "utterance": query,
                     "name": intent_name,
+                    "_mw": _mw,
+                    "_rw": _rw,
                 }
 
     def calc_intent(self, query: str) -> dict:
@@ -387,20 +407,13 @@ class IntentContainer:
             intent matches, returns a result dict with ``name=None`` and
             ``conf=0``.
         """
-        def _matched_words(r: dict) -> int:
-            """Total words covered by matched keyword samples."""
-            return sum(
-                sum(_word_count(kw) for kw in kws)
-                for kws in r["keywords"].values()
-            )
-
         best = None
         best_conf = -1.0
         best_matched = -1
         for result in self.calc_intents(query):
             c = result["conf"]
-            mw = _matched_words(result)
-            rem = _word_count(result["utterance_remainder"])
+            mw = result["_mw"]
+            rem = result["_rw"]
             if best is None:
                 better = True
             elif c > best_conf:
@@ -411,9 +424,8 @@ class IntentContainer:
                     better = True
                 elif mw == best_matched:
                     # prefer shorter remainder (less leftover)
-                    best_rem = _word_count(best["utterance_remainder"])
-                    better = rem < best_rem or (
-                        rem == best_rem and result["name"] < best["name"]
+                    better = rem < best["_rw"] or (
+                        rem == best["_rw"] and result["name"] < best["name"]
                     )
                 else:
                     better = False
@@ -430,4 +442,6 @@ class IntentContainer:
                 "name": None, "keywords": {}, "conf": 0,
                 "utterance": norm, "utterance_remainder": norm,
             }
+        best.pop("_mw", None)
+        best.pop("_rw", None)
         return best
