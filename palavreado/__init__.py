@@ -289,7 +289,7 @@ class IntentContainer:
                 return sorted(matched, key=lambda x: len(x.split()), reverse=True), 1.0
 
             # Pass 2: contiguous match on lemma-normalised query.
-            lemma_map = {lemmatize(w): w for w in candidates}
+            lemma_map = {" ".join(lemmatize(t) for t in _tokenize(w)): w for w in candidates}
             matched_lemmas = [c for c in chunk(lemma_query, list(lemma_map)) if c in lemma_map]
             if matched_lemmas:
                 result = sorted([lemma_map[lm] for lm in matched_lemmas],
@@ -358,8 +358,8 @@ class IntentContainer:
                             if remainder in kws:
                                 remainder = ""
 
-            # All required slots with samples must be present.
-            if not {kw for kw, s in intent["required"].items() if s}.issubset(matches):
+            # All required slots must be present in matches.
+            if not intent["required"].keys() <= matches.keys():
                 continue
 
             conf = _score(conf, remainder, q_words, len(matches), n_req + n_opt)

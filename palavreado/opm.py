@@ -1,6 +1,5 @@
 """OVOS pipeline plugin wrapping palavreado — keyword intent matching (adapt replacement)."""
 
-from functools import lru_cache
 from typing import Dict, List, Optional, Union
 
 from langcodes import closest_match
@@ -53,8 +52,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self._vocab: Dict[str, Dict[str, List[str]]] = {
             lang: {} for lang in langs
         }
-        # per-lang regex store: list of raw regex strings
-        self._regexes: Dict[str, List[str]] = {lang: [] for lang in langs}
+        # per-lang per-entity_type regex store
+        self._regexes: Dict[str, Dict[str, List[str]]] = {lang: {} for lang in langs}
 
         self.registered_vocab: List[dict] = []
         self._registered_intents: List[dict] = []  # raw intent dicts for manifest
@@ -91,7 +90,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         regex_str = message.data.get("regex")
         if regex_str:
-            self._regexes[lang].append(regex_str)
+            entity_type = message.data.get("entity_type", "")
+            self._regexes[lang].setdefault(entity_type, []).append(regex_str)
             return
 
         entity_value = message.data.get("entity_value")
@@ -124,10 +124,16 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         for kw_type, _ in (intent.requires or []):
             samples = self._vocab[lang].get(kw_type, [])
             creator.require(kw_type, samples)
+            regexes = self._regexes[lang].get(kw_type, [])
+            if regexes:
+                creator.require_regex(kw_type, regexes)
 
         for kw_type, _ in (intent.optional or []):
             samples = self._vocab[lang].get(kw_type, [])
             creator.optionally(kw_type, samples)
+            regexes = self._regexes[lang].get(kw_type, [])
+            if regexes:
+                creator.optional_regex(kw_type, regexes)
 
         # at_least_one: treat each group as optional slots (best-effort)
         for group in (intent.at_least_one or []):
@@ -165,6 +171,9 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         for lang, vocab in self._vocab.items():
             self._vocab[lang] = {k: v for k, v in vocab.items()
                                  if not k.startswith(skill_id)}
+        for lang, regexes in self._regexes.items():
+            self._regexes[lang] = {k: v for k, v in regexes.items()
+                                   if not k.startswith(skill_id)}
         for container in self.containers.values():
             for intent_name in list(container.intent_names):
                 if intent_name.startswith(skill_id):
@@ -217,13 +226,12 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
     # ── intent calculation ────────────────────────────────────────────────────
 
-    @lru_cache(maxsize=128)
     def _match_intent(self, utterances: tuple, lang: Optional[str] = None,
                       message: Optional[str] = None) -> Optional[IntentHandlerMatch]:
         """Match utterances against registered intents, honouring session blacklists.
 
         Args:
-            utterances: Tuple of ASR hypotheses (hashable for lru_cache).
+            utterances: Tuple of ASR hypotheses.
             lang: BCP-47 language tag.
             message: Serialised :class:`Message` string (for session lookup).
 
@@ -288,7 +296,6 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self.bus.remove("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
 
 
-@lru_cache(maxsize=128)
 def _calc_palavreado_intent(utt: str,
                              container: IntentContainer,
                              sess: Session) -> Optional[dict]:

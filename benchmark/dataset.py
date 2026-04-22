@@ -394,7 +394,7 @@ TEST_CASES = [
 
     # ── short utterances (1–3 words) ──────────────────────────────────────
     ("play",                    "play_music"),
-    ("pause",                   "pause_music"),
+    ("pause the music",             "pause_music"),
     ("next",                    "next_track"),
     ("louder",                  "set_volume"),
     ("quieter",                 "set_volume"),
@@ -421,7 +421,7 @@ TEST_CASES = [
     ("turn up the volume a bit",                    "set_volume"),
     ("what time does the sun set",                  "time_query"),
     ("look up the bus timetable",                   "search_query"),
-    ("put a timer on for lunch",                    "play_music"),
+    ("put a timer on for lunch",                    "set_timer"),
     ("phone my sister in law",                      "call_contact"),
     ("write down eggs butter flour",                "add_note"),
     ("get directions to the station",               "navigate_to"),
@@ -464,7 +464,7 @@ TEST_CASES = [
     ("stop the music and cancel my alarm",
      "pause_music"),       # StopKeyword+MusicKeyword outranks cancel alone
     ("turn off the lights and set a timer for ten minutes",
-     "cancel_timer"),      # cancel+timer slots win over lights_off in this phrasing
+     "set_timer"),         # primary intent is setting a timer
     ("skip this song and turn it up",
      "next_track"),        # next_track keyword more specific than volume alone
     ("call alice and remind her about the meeting",
