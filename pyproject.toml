@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "palavreado"
+dynamic = ["version"]
+description = "Dead-simple keyword-based intent parser"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "jarbasai", email = "jarbasai@mailfence.com" }]
+keywords = ["intent", "nlp", "voice", "ovos", "mycroft", "keyword"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.9"
+dependencies = ["simplematch", "quebra_frases"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+ovos = [
+    "ovos-bus-client",
+    "ovos-config",
+    "ovos-plugin-manager",
+    "ovos-utils",
+    "langcodes",
+]
+
+[project.entry-points."ovos.pipeline"]
+palavreado = "palavreado.opm:PalavreadoPipeline"
+
+[project.urls]
+Homepage = "https://github.com/TigreGotico/palavreado"
+
+[tool.setuptools.dynamic]
+version = {attr = "palavreado.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
