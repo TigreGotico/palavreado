@@ -160,11 +160,11 @@ class TestIntentContainer(unittest.TestCase):
 
         self.assertEqual(
             container.calc_intent('i want nuMBer 3'),
-            {'conf': 0.825,
+            {'conf': 0.85,
              'keywords': {'number': ['3']},
              'name': 'test_int',
              'utterance': 'i want nuMBer 3',
-             'utterance_remainder': 'i want nuMBer'})
+             'utterance_remainder': 'i want'})
 
         intent = IntentCreator("test_float"). \
             require_autoregex('number',
@@ -196,7 +196,7 @@ class TestIntentContainer(unittest.TestCase):
         self.assertEqual(
             container.calc_intent('turn off the lights and close the door'),
             {'conf': 0.9375,
-             'keywords': {'light': ['lights'], 'off': ['off', 'close']},
+             'keywords': {'light': ['light'], 'off': ['off', 'close']},
              'name': 'lights_off',
              'utterance': 'turn off the lights and close the door',
              'utterance_remainder': 'turn the and the door'}

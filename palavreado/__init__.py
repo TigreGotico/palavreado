@@ -9,7 +9,7 @@ import logging
 from functools import lru_cache
 from typing import Dict, Iterator, List, Union
 
-from palavreado.bracket_expansion import normalize_utterance, normalize_example
+from palavreado.bracket_expansion import normalize_utterance, normalize_example, lemmatize  # noqa: F401 (lemmatize exported for callers)
 from palavreado.builder import IntentCreator
 from quebra_frases.chunks import chunk
 from quebra_frases import word_tokenize, flatten
@@ -28,6 +28,9 @@ def get_utterance_remainder(utterance: str,
                             as_string: bool = True) -> Union[str, List[str]]:
     """Return the portion of *utterance* not covered by any sample token.
 
+    Comparison is done on lemmatized forms so plural/apostrophe variants of
+    already-matched keywords are also consumed from the remainder.
+
     Args:
         utterance: The full utterance string.
         samples: Keyword/entity samples that were matched.
@@ -39,8 +42,8 @@ def get_utterance_remainder(utterance: str,
     """
     consumed: set = set()
     for s in samples:
-        consumed.update(_tokenize(s))
-    words = [t for t in _tokenize(utterance) if t not in consumed]
+        consumed.update(lemmatize(t) for t in _tokenize(s))
+    words = [t for t in _tokenize(utterance) if lemmatize(t) not in consumed]
     if as_string:
         return " ".join(words)
     return words
@@ -224,31 +227,41 @@ class IntentContainer:
         query = normalize_utterance(query)
         excluded = self._filter(query)
 
-        def _match(kw_samples: List[str]) -> List[str]:
-            singles: List[str] = []
-            plurals: List[str] = []
-            for w in kw_samples:
-                if w.endswith("s"):
-                    singular = w[:-1]
-                    if singular and re.search(
-                        r'\b' + re.escape(singular) + r'\b', query, re.IGNORECASE
-                    ):
-                        continue
-                    plurals.append(w)
-                else:
-                    if re.search(
-                        r'\b' + re.escape(w + "s") + r'\b', query, re.IGNORECASE
-                    ):
-                        plurals.append(w + "s")
-                    else:
-                        singles.append(w)
+        # lemmatized query tokens for fast lookup
+        query_lemmas = {lemmatize(t) for t in _tokenize(query)}
 
-            results: List[str] = []
-            if singles:
-                results += [c for c in chunk(query, singles) if c in singles]
-            if not results and plurals:
-                results += [c for c in chunk(query, plurals) if c in plurals]
-            return results
+        def _match(kw_samples: List[str]) -> List[str]:
+            # Build a mapping: lemmatized sample → original sample string.
+            # If the lemma of a sample exists anywhere in the lemmatized query
+            # tokens, we try chunk() on the original query with both the
+            # original and (if different) the surface form found in the query.
+            candidates: List[str] = []
+            for w in kw_samples:
+                lw = lemmatize(w)
+                if lw in query_lemmas:
+                    candidates.append(w)
+                    continue
+                # also try each token of w (multi-word samples)
+                if all(lemmatize(t) in query_lemmas for t in _tokenize(w)):
+                    candidates.append(w)
+
+            if not candidates:
+                return []
+
+            # chunk() finds contiguous substrings; run it on the original query
+            # with original-form candidates first, then lemmatized fallback.
+            matched = [c for c in chunk(query, candidates) if c in candidates]
+            if matched:
+                return matched
+
+            # lemmatized fallback: rebuild a lemma-normalised query string and
+            # compare against lemmatized candidates, then return original forms.
+            lemma_query = " ".join(lemmatize(t) for t in _tokenize(query))
+            lemma_map = {lemmatize(w): w for w in candidates}
+            lemma_cands = list(lemma_map.keys())
+            matched_lemmas = [c for c in chunk(lemma_query, lemma_cands)
+                              if c in lemma_map]
+            return [lemma_map[lm] for lm in matched_lemmas]
 
         for intent_name, intent in self.intents.items():
             if intent_name in excluded:

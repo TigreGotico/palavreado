@@ -236,3 +236,21 @@ def expand_parentheses(sent: str) -> List[str]:
     """
     expanded = SentenceTreeParser(sent).expand_parentheses()
     return ["".join(_).strip() for _ in expanded]
+
+
+# ── lightweight lemmatizer ───────────────────────────────────────────────────
+
+_APOS_RE = re.compile(r"['’‘ʼʹ`´＇]")
+
+
+def lemmatize(word: str) -> str:
+    """Canonical stem of *word* for matching only — never used in output.
+
+    Language-agnostic: strips apostrophes entirely and removes a trailing
+    ``"s"`` (but not ``"ss"``) so plural/singular variants of a keyword match.
+    ``"lights"`` → ``"light"``, ``"what s"`` tokens → ``"what"`` + ``""``.
+    """
+    word = _APOS_RE.sub("", word).lower()
+    if len(word) > 2 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
