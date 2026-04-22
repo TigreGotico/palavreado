@@ -250,7 +250,7 @@ def lemmatize(word: str) -> str:
     ``"s"`` (but not ``"ss"``) so plural/singular variants of a keyword match.
     ``"lights"`` → ``"light"``, ``"what s"`` tokens → ``"what"`` + ``""``.
     """
-    word = _APOS_RE.sub("", word).lower()
+    word = _APOS_RE.sub(" ", word).strip().lower()
     if len(word) > 2 and word.endswith("s") and not word.endswith("ss"):
         return word[:-1]
     return word
