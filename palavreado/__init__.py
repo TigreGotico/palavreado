@@ -9,13 +9,13 @@ import logging
 from functools import lru_cache
 from typing import Dict, Iterator, List, Union
 
+from palavreado.bracket_expansion import normalize_utterance, normalize_example
 from palavreado.builder import IntentCreator
 from quebra_frases.chunks import chunk
 from quebra_frases import word_tokenize, flatten
 
 LOG = logging.getLogger('palavreado')
 
-# cached so repeated calls within one query evaluation are free
 _tokenize = lru_cache(maxsize=512)(word_tokenize)
 
 
@@ -58,8 +58,22 @@ class IntentContainer:
     def __init__(self) -> None:
         """Initialise an empty container with no registered intents."""
         self.intents: Dict[str, dict] = {}
-        # compiled regex cache: intent_name -> {pattern_str -> compiled}
         self._compiled: Dict[str, Dict[str, re.Pattern]] = {}
+        # context gating
+        self.available_contexts: Dict[str, Dict[str, object]] = {}
+        self.required_contexts: Dict[str, List[str]] = {}
+        self.excluded_contexts: Dict[str, List[str]] = {}
+        # keyword exclusion
+        self.excluded_keywords: Dict[str, List[str]] = {}
+
+    # ── properties ──────────────────────────────────────────────────────────
+
+    @property
+    def intent_names(self) -> List[str]:
+        """Names of all currently registered intents."""
+        return list(self.intents)
+
+    # ── registration ────────────────────────────────────────────────────────
 
     def add_intent(self, intent: Union[IntentCreator, dict]) -> None:
         """Register a new intent.
@@ -80,8 +94,18 @@ class IntentContainer:
                 f"Intent '{name}' is already registered. "
                 "Remove it first before re-adding."
             )
+        # normalise all training samples at registration time
+        normalised = {}
+        for slot, samples in intent["required"].items():
+            normalised[slot] = [normalize_example(s) for s in samples]
+        intent = dict(intent)
+        intent["required"] = normalised
+        norm_opt = {}
+        for slot, samples in intent["optional"].items():
+            norm_opt[slot] = [normalize_example(s) for s in samples]
+        intent["optional"] = norm_opt
+
         self.intents[name] = intent
-        # pre-compile all regexes at registration time
         self._compiled[name] = {
             rx: re.compile(rx, flags=re.IGNORECASE)
             for patterns in intent["regex"].values()
@@ -104,6 +128,84 @@ class IntentContainer:
         self.intents.pop(name, None)
         self._compiled.pop(name, None)
 
+    # ── context gating ───────────────────────────────────────────────────────
+
+    def set_context(self, intent_name: str, context_name: str,
+                    context_val: object = None) -> None:
+        """Mark *context_name* as active for *intent_name*."""
+        self.available_contexts.setdefault(intent_name, {})[context_name] = context_val
+
+    def unset_context(self, intent_name: str, context_name: str) -> None:
+        """Remove an active context from *intent_name*."""
+        if intent_name in self.available_contexts:
+            self.available_contexts[intent_name].pop(context_name, None)
+
+    def require_context(self, intent_name: str, context_name: str) -> None:
+        """Gate *intent_name* so it only fires when *context_name* is active."""
+        self.required_contexts.setdefault(intent_name, []).append(context_name)
+
+    def unrequire_context(self, intent_name: str, context_name: str) -> None:
+        """Lift a context requirement from *intent_name*."""
+        if intent_name in self.required_contexts:
+            self.required_contexts[intent_name] = [
+                c for c in self.required_contexts[intent_name] if c != context_name
+            ]
+
+    def exclude_context(self, intent_name: str, context_name: str) -> None:
+        """Suppress *intent_name* whenever *context_name* is active."""
+        self.excluded_contexts.setdefault(intent_name, []).append(context_name)
+
+    def unexclude_context(self, intent_name: str, context_name: str) -> None:
+        """Lift a context-based suppression from *intent_name*."""
+        if intent_name in self.excluded_contexts:
+            self.excluded_contexts[intent_name] = [
+                c for c in self.excluded_contexts[intent_name] if c != context_name
+            ]
+
+    # ── keyword exclusion ────────────────────────────────────────────────────
+
+    def exclude_keywords(self, intent_name: str, samples: List[str]) -> None:
+        """Suppress *intent_name* when any keyword in *samples* appears in the query.
+
+        Single-word keywords use whole-word matching; multi-word keywords use a
+        word-boundary regex, so ``"play"`` does not fire on ``"display"``.
+
+        Args:
+            intent_name: Intent to suppress.
+            samples: Keywords that trigger suppression.
+        """
+        self.excluded_keywords.setdefault(intent_name, [])
+        self.excluded_keywords[intent_name] += samples
+
+    # ── internal filtering ───────────────────────────────────────────────────
+
+    def _filter(self, query: str) -> List[str]:
+        """Return intent names that should be excluded for this *query*."""
+        excluded: List[str] = []
+        query_words = set(query.lower().split())
+
+        for intent_name, keywords in self.excluded_keywords.items():
+            def _hit(kw: str, _qw=query_words, _q=query) -> bool:
+                if " " not in kw:
+                    return kw.lower() in _qw
+                return bool(re.search(r"\b" + re.escape(kw.lower()) + r"\b", _q, re.IGNORECASE))
+            if any(_hit(kw) for kw in keywords):
+                excluded.append(intent_name)
+
+        for intent_name, contexts in self.required_contexts.items():
+            active = self.available_contexts.get(intent_name, {})
+            if any(c not in active for c in contexts):
+                excluded.append(intent_name)
+
+        for intent_name, contexts in self.excluded_contexts.items():
+            active = self.available_contexts.get(intent_name, {})
+            if any(c in active for c in contexts):
+                excluded.append(intent_name)
+
+        return excluded
+
+    # ── matching ────────────────────────────────────────────────────────────
+
     def calc_intents(self, query: str) -> Iterator[dict]:
         """Yield scored match results for every intent that matches *query*.
 
@@ -118,26 +220,22 @@ class IntentContainer:
             Match result dicts ordered by registration, not by confidence.
             Use :meth:`calc_intent` to obtain the single best match.
         """
-        query_words = set(_tokenize(query))
+        # normalise query the same way training data was normalised
+        query = normalize_utterance(query)
+        excluded = self._filter(query)
 
         def _match(kw_samples: List[str]) -> List[str]:
-            # Separate plural candidates from singular ones.
-            # Use word-boundary check so "status" is not wrongly dropped
-            # when the query contains "statuses".
             singles: List[str] = []
             plurals: List[str] = []
             for w in kw_samples:
                 if w.endswith("s"):
-                    # only treat as plural candidate if the singular form
-                    # appears as a whole word in the query
                     singular = w[:-1]
                     if singular and re.search(
                         r'\b' + re.escape(singular) + r'\b', query, re.IGNORECASE
                     ):
-                        continue  # covered by singular path below
+                        continue
                     plurals.append(w)
                 else:
-                    # drop singular if its plural is already a whole word in query
                     if re.search(
                         r'\b' + re.escape(w + "s") + r'\b', query, re.IGNORECASE
                     ):
@@ -153,6 +251,8 @@ class IntentContainer:
             return results
 
         for intent_name, intent in self.intents.items():
+            if intent_name in excluded:
+                continue
             if not intent["required"]:
                 continue
             remainder = query
@@ -168,7 +268,6 @@ class IntentContainer:
             for kw, kw_patterns in intent["regex"].items():
                 if not kw_patterns:
                     continue
-                # try longest pattern first
                 for rx in sorted(kw_patterns, key=len, reverse=True):
                     regex_compiled = compiled[rx]
                     m = regex_compiled.match(query)
@@ -227,7 +326,7 @@ class IntentContainer:
                         if remainder in kws:
                             remainder = ""
 
-            # penalise by word-count fraction of remainder, not character length
+            # penalise by word-count fraction of remainder
             if query:
                 q_words = _word_count(query)
                 r_words = _word_count(remainder)
@@ -273,8 +372,9 @@ class IntentContainer:
                 best_conf = c
                 best = result
         if best is None:
+            norm = normalize_utterance(query)
             return {
                 "name": None, "keywords": {}, "conf": 0,
-                "utterance": query, "utterance_remainder": query,
+                "utterance": norm, "utterance_remainder": norm,
             }
         return best

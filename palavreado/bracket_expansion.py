@@ -1,11 +1,52 @@
 """
-Bracket/parenthesis expansion for palavreado sample strings.
+Bracket/parenthesis expansion and text normalisation for palavreado.
 
 Converts patterns like ``"(hello|hi) world"`` into a list of all possible
 expansions: ``["hello world", "hi world"]``.  Square brackets denote optional
 sections: ``"hey [world]"`` → ``["hey world", "hey"]``.
+
+Also provides :func:`normalize_utterance` and :func:`normalize_example` so
+that training data and queries are processed identically (apostrophes → space,
+collapsed whitespace).
 """
+import re
 from typing import List
+
+
+# ── normalisation helpers ────────────────────────────────────────────────────
+
+_APOSTROPHES = (
+    "'",   # U+0027 ASCII apostrophe
+    "’",  # RIGHT SINGLE QUOTATION MARK
+    "‘",  # LEFT SINGLE QUOTATION MARK
+    "ʼ",  # MODIFIER LETTER APOSTROPHE
+    "ʹ",  # MODIFIER LETTER PRIME
+    "`",   # U+0060 GRAVE ACCENT
+    "´",  # ACUTE ACCENT
+    "＇",  # FULLWIDTH APOSTROPHE
+)
+
+
+def drop_apostrophes(text: str) -> str:
+    """Replace all apostrophe variants with a space, preserving word boundaries."""
+    for ch in _APOSTROPHES:
+        text = text.replace(ch, " ")
+    return text
+
+
+def normalize_whitespace(text: str) -> str:
+    """Collapse runs of whitespace to a single space and strip ends."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def normalize_utterance(text: str) -> str:
+    """Normalise a plain query before matching (no entity syntax preserved)."""
+    return normalize_whitespace(drop_apostrophes(text))
+
+
+def normalize_example(text: str) -> str:
+    """Normalise a training example (preserves ``{entity}`` placeholders)."""
+    return normalize_whitespace(drop_apostrophes(text))
 
 
 class TreeFragment:

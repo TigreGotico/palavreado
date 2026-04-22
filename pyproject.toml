@@ -22,6 +22,16 @@ dependencies = ["simplematch", "quebra_frases"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov"]
+ovos = [
+    "ovos-bus-client",
+    "ovos-config",
+    "ovos-plugin-manager",
+    "ovos-utils",
+    "langcodes",
+]
+
+[project.entry-points."ovos.pipeline"]
+palavreado = "palavreado.opm:PalavreadoPipeline"
 
 [project.urls]
 Homepage = "https://github.com/TigreGotico/palavreado"

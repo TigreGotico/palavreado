@@ -1,6 +1,6 @@
 """Comprehensive test suite for palavreado."""
 from palavreado import IntentContainer, IntentCreator
-from palavreado.bracket_expansion import expand_parentheses
+from palavreado.bracket_expansion import expand_parentheses, normalize_utterance
 import unittest
 
 
@@ -374,6 +374,147 @@ class TestIntentCreator(unittest.TestCase):
         built = intent.build()
         self.assertIn("please", built["optional"]["extra"])
         self.assertIn("kindly", built["optional"]["extra"])
+
+
+class TestNormalisation(unittest.TestCase):
+
+    def test_apostrophe_in_query_normalised(self):
+        """Apostrophe in query is normalised the same way as training data."""
+        # Both "what's up" and "what's up" (different apostrophe char) normalise
+        # to the same form, so they match each other.
+        container = IntentContainer()
+        container.add_intent(IntentCreator("greet").require("hello", ["what’s up"]))
+        result = container.calc_intent("what's up")
+        self.assertEqual(result["name"], "greet")
+
+    def test_apostrophe_training_query_consistent(self):
+        """Training and query apostrophes both normalise to the same string."""
+        self.assertEqual(
+            normalize_utterance("what’s up"),
+            normalize_utterance("what's up"),
+        )
+
+    def test_normalize_utterance_collapses_whitespace(self):
+        self.assertEqual(normalize_utterance("hello   world"), "hello world")
+
+    def test_normalize_utterance_strips(self):
+        self.assertEqual(normalize_utterance("  hello "), "hello")
+
+    def test_normalize_utterance_apostrophe(self):
+        self.assertEqual(normalize_utterance("it's"), "it s")
+
+
+class TestContextGating(unittest.TestCase):
+
+    def _container_with_yes(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("confirm").require("yes", ["yes", "yeah", "ok"]))
+        return container
+
+    def test_required_context_blocks_without_context(self):
+        container = self._container_with_yes()
+        container.require_context("confirm", "confirm_active")
+        result = container.calc_intent("yes")
+        self.assertIsNone(result["name"])
+
+    def test_required_context_passes_with_context(self):
+        container = self._container_with_yes()
+        container.require_context("confirm", "confirm_active")
+        container.set_context("confirm", "confirm_active")
+        result = container.calc_intent("yes")
+        self.assertEqual(result["name"], "confirm")
+
+    def test_unrequire_context_restores_matching(self):
+        container = self._container_with_yes()
+        container.require_context("confirm", "confirm_active")
+        container.unrequire_context("confirm", "confirm_active")
+        result = container.calc_intent("yes")
+        self.assertEqual(result["name"], "confirm")
+
+    def test_excluded_context_blocks_when_active(self):
+        container = self._container_with_yes()
+        container.exclude_context("confirm", "modal_open")
+        container.set_context("confirm", "modal_open")
+        result = container.calc_intent("yes")
+        self.assertIsNone(result["name"])
+
+    def test_excluded_context_passes_when_inactive(self):
+        container = self._container_with_yes()
+        container.exclude_context("confirm", "modal_open")
+        result = container.calc_intent("yes")
+        self.assertEqual(result["name"], "confirm")
+
+    def test_unexclude_context_restores_matching(self):
+        container = self._container_with_yes()
+        container.exclude_context("confirm", "modal_open")
+        container.set_context("confirm", "modal_open")
+        container.unexclude_context("confirm", "modal_open")
+        result = container.calc_intent("yes")
+        self.assertEqual(result["name"], "confirm")
+
+    def test_unset_context_re_blocks(self):
+        container = self._container_with_yes()
+        container.require_context("confirm", "confirm_active")
+        container.set_context("confirm", "confirm_active")
+        container.unset_context("confirm", "confirm_active")
+        result = container.calc_intent("yes")
+        self.assertIsNone(result["name"])
+
+
+class TestKeywordExclusion(unittest.TestCase):
+
+    def test_excluded_keyword_blocks_intent(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("play").require("play", ["play"]))
+        container.exclude_keywords("play", ["stop"])
+        result = container.calc_intent("stop play")
+        self.assertIsNone(result["name"])
+
+    def test_excluded_keyword_word_boundary(self):
+        """Exclusion keyword 'play' must not trigger on the word 'display'."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("show").require("show", ["display", "show"]))
+        container.exclude_keywords("show", ["play"])
+        # 'display' contains 'play' as a substring but NOT as a whole word —
+        # the exclusion must NOT fire, so the intent should match.
+        result = container.calc_intent("display something")
+        self.assertEqual(result["name"], "show")
+
+    def test_excluded_keyword_exact_word_fires(self):
+        """Exclusion keyword 'play' does fire when the whole word 'play' is present."""
+        container = IntentContainer()
+        container.add_intent(IntentCreator("show").require("show", ["display", "show"]))
+        container.exclude_keywords("show", ["play"])
+        result = container.calc_intent("play display")
+        self.assertIsNone(result["name"])
+
+    def test_excluded_keyword_does_not_affect_other_intents(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("play").require("play", ["play"]))
+        container.add_intent(IntentCreator("stop").require("stop", ["stop"]))
+        container.exclude_keywords("play", ["stop"])
+        result = container.calc_intent("stop")
+        self.assertEqual(result["name"], "stop")
+
+
+class TestIntentNames(unittest.TestCase):
+
+    def test_intent_names_empty(self):
+        container = IntentContainer()
+        self.assertEqual(container.intent_names, [])
+
+    def test_intent_names_populated(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("a").require("kw", ["hello"]))
+        container.add_intent(IntentCreator("b").require("kw", ["bye"]))
+        self.assertIn("a", container.intent_names)
+        self.assertIn("b", container.intent_names)
+
+    def test_intent_names_after_remove(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("a").require("kw", ["hello"]))
+        container.remove_intent("a")
+        self.assertNotIn("a", container.intent_names)
 
 
 class TestBracketExpansion(unittest.TestCase):
