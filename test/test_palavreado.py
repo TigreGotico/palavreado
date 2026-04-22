@@ -1,4 +1,6 @@
+"""Comprehensive test suite for palavreado."""
 from palavreado import IntentContainer, IntentCreator
+from palavreado.bracket_expansion import expand_parentheses
 import unittest
 
 
@@ -199,3 +201,210 @@ class TestIntentContainer(unittest.TestCase):
              'utterance': 'turn off the lights and close the door',
              'utterance_remainder': 'turn the and the door'}
         )
+
+    # --- new tests ---
+
+    def test_no_match_returns_none_name(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        result = container.calc_intent("goodbye")
+        self.assertIsNone(result["name"])
+
+    def test_no_match_has_all_keys(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        result = container.calc_intent("goodbye")
+        for key in ("name", "conf", "keywords", "utterance", "utterance_remainder"):
+            self.assertIn(key, result, f"Key '{key}' missing from no-match result")
+
+    def test_remove_intent(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        self.assertIn("greet", container.intents)
+        container.remove_intent("greet")
+        self.assertNotIn("greet", container.intents)
+
+    def test_remove_nonexistent_no_error(self):
+        container = IntentContainer()
+        # Should not raise
+        container.remove_intent("nonexistent")
+
+    def test_duplicate_registration_raises(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        with self.assertRaises(RuntimeError):
+            container.add_intent(IntentCreator("greet").require("hello", ["hi"]))
+
+    def test_remove_then_re_add_ok(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        container.remove_intent("greet")
+        # Should not raise after removal
+        container.add_intent(IntentCreator("greet").require("hello", ["hi"]))
+        self.assertIn("greet", container.intents)
+
+    def test_add_intent_dict_directly(self):
+        container = IntentContainer()
+        built = IntentCreator("greet").require("hello", ["hello"]).build()
+        container.add_intent(built)
+        self.assertIn("greet", container.intents)
+
+    def test_remove_intent_via_dict(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("greet").require("hello", ["hello"]))
+        built = {"intent_name": "greet"}
+        container.remove_intent(built)
+        self.assertNotIn("greet", container.intents)
+
+    def test_optional_keyword_boosts_conf(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet") \
+            .require("hello", ["hello"]) \
+            .optionally("world", ["world"])
+        container.add_intent(intent)
+        without_optional = container.calc_intent("hello")
+        with_optional = container.calc_intent("hello world")
+        self.assertGreaterEqual(with_optional["conf"], without_optional["conf"])
+
+    def test_conf_clamped_to_1(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        result = container.calc_intent("hello")
+        self.assertLessEqual(result["conf"], 1.0)
+
+    def test_conf_non_negative(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        for utterance in ["hello", "hello world how are you today extra words"]:
+            for r in container.calc_intents(utterance):
+                self.assertGreaterEqual(r["conf"], 0.0)
+
+    def test_empty_query_no_crash(self):
+        container = IntentContainer()
+        intent = IntentCreator("greet").require("hello", ["hello"])
+        container.add_intent(intent)
+        result = container.calc_intent("")
+        self.assertIsNotNone(result)
+
+    def test_calc_intents_yields_multiple(self):
+        container = IntentContainer()
+        container.add_intent(IntentCreator("a").require("kw", ["hello"]))
+        container.add_intent(IntentCreator("b").require("kw", ["hello"]))
+        results = list(container.calc_intents("hello"))
+        self.assertGreaterEqual(len(results), 2)
+
+
+class TestIntentCreator(unittest.TestCase):
+
+    def test_build(self):
+        intent = IntentCreator("test"). \
+            require('hello', ["hello"]). \
+            optionally("world", ["world"])
+        self.assertEqual(intent.build(), {
+            "intent_name": "test",
+            "required": {"hello": ["hello"]},
+            "optional": {"world": ["world"]},
+            "regex": {}
+        })
+
+    def test_autoregex(self):
+        intent = IntentCreator("buy"). \
+            require_autoregex('item', ['buy {item}'])
+        built = intent.build()
+        self.assertIn("item", built["regex"])
+        self.assertTrue(len(built["regex"]["item"]) > 0)
+
+    def test_regex(self):
+        rx = r'(?P<City>\w+)'
+        intent = IntentCreator("location").require_regex("City", rx)
+        built = intent.build()
+        self.assertIn("City", built["regex"])
+        self.assertIn(rx, built["regex"]["City"])
+
+    def test_fluent_chain_returns_self(self):
+        creator = IntentCreator("chain")
+        result = creator.require("a", ["a"])
+        self.assertIs(result, creator)
+        result = creator.optionally("b", ["b"])
+        self.assertIs(result, creator)
+        result = creator.require_regex("c", [r"\w+"])
+        self.assertIs(result, creator)
+
+    def test_require_regex_raw(self):
+        intent = IntentCreator("test").require_regex("slot", [r"(?P<slot>\d+)"])
+        built = intent.build()
+        self.assertIn("slot", built["regex"])
+
+    def test_optional_regex(self):
+        intent = IntentCreator("test") \
+            .require("kw", ["hello"]) \
+            .optional_regex("slot", [r"(?P<slot>\d+)"])
+        built = intent.build()
+        self.assertIn("slot", built["regex"])
+        self.assertIn("slot", built["optional"])
+
+    def test_optional_autoregex(self):
+        intent = IntentCreator("test") \
+            .require("kw", ["hello"]) \
+            .optional_autoregex("thing", ["with {thing}"])
+        built = intent.build()
+        self.assertIn("thing", built["regex"])
+        self.assertIn("thing", built["optional"])
+
+    def test_require_multiple_keywords_same_slot(self):
+        intent = IntentCreator("test") \
+            .require("kw", ["foo"]) \
+            .require("kw", ["bar"])
+        built = intent.build()
+        self.assertIn("foo", built["required"]["kw"])
+        self.assertIn("bar", built["required"]["kw"])
+
+    def test_optionally_multiple(self):
+        intent = IntentCreator("test") \
+            .require("kw", ["hello"]) \
+            .optionally("extra", ["please"]) \
+            .optionally("extra", ["kindly"])
+        built = intent.build()
+        self.assertIn("please", built["optional"]["extra"])
+        self.assertIn("kindly", built["optional"]["extra"])
+
+
+class TestBracketExpansion(unittest.TestCase):
+
+    def test_alternation(self):
+        result = expand_parentheses("(hello|hi) world")
+        self.assertIn("hello world", result)
+        self.assertIn("hi world", result)
+        self.assertEqual(len(result), 2)
+
+    def test_optional(self):
+        result = expand_parentheses("hey [world]")
+        self.assertIn("hey world", result)
+        self.assertIn("hey", result)
+
+    def test_nested(self):
+        result = expand_parentheses("(a|b) (c|d)")
+        self.assertIn("a c", result)
+        self.assertIn("a d", result)
+        self.assertIn("b c", result)
+        self.assertIn("b d", result)
+
+    def test_plain_string(self):
+        result = expand_parentheses("hello world")
+        self.assertEqual(result, ["hello world"])
+
+    def test_empty_alternative(self):
+        result = expand_parentheses("hello (world|)")
+        self.assertIn("hello world", result)
+        self.assertIn("hello", result)
+
+
+if __name__ == "__main__":
+    unittest.main()
