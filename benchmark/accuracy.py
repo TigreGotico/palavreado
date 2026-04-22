@@ -67,6 +67,8 @@ def run():
                 tp += 1; per_tp[expected] += 1
             else:
                 fn += 1; per_fn[expected] += 1
+                if predicted is not None:
+                    fp += 1; per_fp[predicted] += 1
                 wrong.append((utt, expected, predicted, conf))
         else:
             if predicted is not None:
