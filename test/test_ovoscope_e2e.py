@@ -322,12 +322,16 @@ class TestSessionBlacklist(_E2EBase):
         msg.context["session"] = sess.serialize()
 
         failed = threading.Event()
-        self.mc.bus.on("complete_intent_failure", lambda _: failed.set())
+
+        def _on_fail(_msg):
+            failed.set()
+
+        self.mc.bus.on("complete_intent_failure", _on_fail)
         try:
             self.mc.bus.emit(msg)
             failed.wait(timeout=3.0)
         finally:
-            self.mc.bus.remove("complete_intent_failure", lambda _: failed.set())
+            self.mc.bus.remove("complete_intent_failure", _on_fail)
         self.assertTrue(failed.is_set(), "blacklisted intent should yield intent_failure")
 
     def test_blacklisted_skill_is_skipped(self):
@@ -346,12 +350,16 @@ class TestSessionBlacklist(_E2EBase):
         msg.context["session"] = sess.serialize()
 
         failed = threading.Event()
-        self.mc.bus.on("complete_intent_failure", lambda _: failed.set())
+
+        def _on_fail(_msg):
+            failed.set()
+
+        self.mc.bus.on("complete_intent_failure", _on_fail)
         try:
             self.mc.bus.emit(msg)
             failed.wait(timeout=3.0)
         finally:
-            self.mc.bus.remove("complete_intent_failure", lambda _: failed.set())
+            self.mc.bus.remove("complete_intent_failure", _on_fail)
         self.assertTrue(failed.is_set(), "blacklisted skill should yield intent_failure")
 
 
