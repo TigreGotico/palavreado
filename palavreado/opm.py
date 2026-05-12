@@ -30,7 +30,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
     def __init__(self, bus: Optional[Union[MessageBusClient, FakeBus]] = None,
                  config: Optional[Dict] = None) -> None:
         core_config = Configuration()
-        config = config or core_config.get("palavreado", {})
+        config = config or core_config.get("intents", {}).get("palavreado", {}) or core_config.get("palavreado", {})
         super().__init__(bus=bus, config=config)
 
         self.lang = standardize_lang_tag(core_config.get("lang", "en-US"))

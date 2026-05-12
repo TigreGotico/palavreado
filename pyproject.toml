@@ -46,7 +46,7 @@ dev = [
 ]
 test = ["palavreado[dev]"]
 
-[project.entry-points."ovos.pipeline"]
+[project.entry-points."opm.pipeline"]
 palavreado = "palavreado.opm:PalavreadoPipeline"
 
 [project.urls]
