@@ -1,11 +1,16 @@
 # Changelog
 
+## [1.1.0a2](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a2) (2026-05-12)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a1...1.1.0a2)
+
 ## [1.1.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a1) (2026-05-12)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.0.0a2...1.1.0a1)
 
 **Merged pull requests:**
 
+- Update actions/setup-python action to v6 [\#15](https://github.com/OpenVoiceOS/palavreado/pull/15) ([renovate[bot]](https://github.com/apps/renovate))
 - feat: ovoscope end-to-end tests for PalavreadoPipeline [\#14](https://github.com/OpenVoiceOS/palavreado/pull/14) ([JarbasAl](https://github.com/JarbasAl))
 - Update actions/checkout action to v6 [\#13](https://github.com/OpenVoiceOS/palavreado/pull/13) ([renovate[bot]](https://github.com/apps/renovate))
 
