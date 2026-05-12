@@ -37,7 +37,6 @@ ovos = [
 dev = [
     "pytest",
     "pytest-cov",
-    "ovoscope",
     "ovos-bus-client",
     "ovos-config",
     "ovos-plugin-manager",
