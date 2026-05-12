@@ -26,12 +26,22 @@ requires-python = ">=3.9"
 dependencies = ["simplematch", "quebra_frases"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
 ovos = [
     "ovos-bus-client",
     "ovos-config",
     "ovos-plugin-manager",
     "ovos-utils",
+    "ovos-workshop",
+    "langcodes",
+]
+test = [
+    "pytest",
+    "pytest-cov",
+    "ovos-bus-client",
+    "ovos-config",
+    "ovos-plugin-manager",
+    "ovos-utils",
+    "ovos-workshop",
     "langcodes",
 ]
 
