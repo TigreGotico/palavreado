@@ -26,14 +26,25 @@ requires-python = ">=3.9"
 dependencies = ["simplematch", "quebra_frases"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
 ovos = [
     "ovos-bus-client",
     "ovos-config",
     "ovos-plugin-manager",
     "ovos-utils",
+    "ovos-workshop",
     "langcodes",
 ]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ovos-bus-client",
+    "ovos-config",
+    "ovos-plugin-manager",
+    "ovos-utils",
+    "ovos-workshop",
+    "langcodes",
+]
+test = ["palavreado[dev]"]
 
 [project.entry-points."ovos.pipeline"]
 palavreado = "palavreado.opm:PalavreadoPipeline"
