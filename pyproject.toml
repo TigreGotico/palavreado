@@ -34,7 +34,7 @@ ovos = [
     "ovos-workshop",
     "langcodes",
 ]
-test = [
+dev = [
     "pytest",
     "pytest-cov",
     "ovos-bus-client",
@@ -44,6 +44,7 @@ test = [
     "ovos-workshop",
     "langcodes",
 ]
+test = ["palavreado[dev]"]
 
 [project.entry-points."ovos.pipeline"]
 palavreado = "palavreado.opm:PalavreadoPipeline"
