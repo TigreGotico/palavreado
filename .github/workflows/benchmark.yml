@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip uv
           uv pip install --system -e ".[test]"
-          uv pip install --system adapt-parser
+          uv pip install --system ovos-adapt-pipeline-plugin
 
       - name: Run benchmark
         id: bench
