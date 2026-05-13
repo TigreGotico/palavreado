@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0a4](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a4) (2026-05-13)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a3...1.1.0a4)
+
+**Merged pull requests:**
+
+- Update marocchino/sticky-pull-request-comment action to v3 [\#16](https://github.com/OpenVoiceOS/palavreado/pull/16) ([renovate[bot]](https://github.com/apps/renovate))
+
+## [1.1.0a3](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a3) (2026-05-12)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a2...1.1.0a3)
+
 ## [1.1.0a2](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a2) (2026-05-12)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a1...1.1.0a2)
