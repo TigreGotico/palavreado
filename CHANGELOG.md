@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.2.0a1) (2026-05-14)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a4...1.2.0a1)
+
+**Merged pull requests:**
+
+- feat: ovoscope end-to-end tests for PalavreadoPipeline [\#21](https://github.com/OpenVoiceOS/palavreado/pull/21) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.1.0a4](https://github.com/OpenVoiceOS/palavreado/tree/1.1.0a4) (2026-05-13)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a3...1.1.0a4)
