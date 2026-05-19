@@ -466,3 +466,8 @@ class IntentContainer:
         best.pop("_mw", None)
         best.pop("_rw", None)
         return best
+
+
+# Re-export DomainIntentContainer at the package root for parity with
+# nebulento and ovos-padatious.
+from palavreado.domain_engine import DomainIntentContainer  # noqa: E402, F401
