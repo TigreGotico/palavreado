@@ -1,6 +1,6 @@
 # Domain-aware OVOS Pipeline Plugin
 
-palavreado ships a second OVOS pipeline plugin, `DomainPalavreadoPipeline`, exposed under its own OPM entry point. It behaves exactly like the flat `PalavreadoPipeline` from a skill's point of view — same `register_vocab` / `register_intent` / `detach_intent` / `detach_skill` bus surface — but internally uses a `DomainIntentContainer` to route matching hierarchically.
+palavreado ships a second OVOS pipeline plugin, `DomainPalavreadoPipeline`, exposed under its own OPM entry point. It behaves exactly like the flat `PalavreadoPipeline` from a skill's point of view — same `register_vocab` / `register_intent` / `detach_intent` / `detach_skill` bus surface — but internally uses a `DomainIntentContainer` to group intents by skill and evaluate them with a **parallel-argmax** strategy.
 
 Source: `palavreado/opm.py` (`DomainPalavreadoPipeline`)
 
@@ -53,7 +53,7 @@ Every key understood by the flat plugin is also understood here.
 
 ---
 
-## Hierarchical routing
+## Parallel-argmax routing
 
 Each registered intent label is of the form `skill_id:intent_name`. The plugin treats the `skill_id` prefix as the **domain**.
 
@@ -64,20 +64,27 @@ register_intent skill_b:play_music ──►  domain = "skill_b"
                                         intent  = "skill_b:play_music"
 ```
 
-At match time:
+At match time, every domain sub-container is evaluated against the utterance and the **global argmax** by confidence wins. There is no top-level router, no seed step, and no two-stage gating — the per-domain containers are small and keyword-rule-based, so parallel evaluation is essentially free.
 
-1. The top-level **domain router** (a flat `IntentContainer` inside the
-   `DomainIntentContainer`) is seeded automatically from every intent's
-   required keywords and decides which domain the utterance belongs to.
-2. The selected domain's sub-container resolves the actual intent.
+A configurable short-circuit threshold (default `1.0`, i.e. exact match) on `DomainIntentContainer.shortcircuit_conf` lets a single sharp hit skip the remaining domains. For 100 domains, an exact match on the first one skips 99 evaluations.
 
-This typically reduces both false positives across skills and per-query work, since the inner search is restricted to a single skill's vocabulary.
+Registration is now just:
+
+```python
+d = DomainIntentContainer()
+d.register_domain_intent("home", lights_intent)
+d.register_domain_intent("media", play_intent)
+
+# no seeding needed
+result = d.calc_intent("play some jazz")
+top5  = d.calc_intents("play some jazz", top_k=5)
+```
 
 Routing rules:
 
 | Bus event           | Behaviour                                                |
 |---------------------|----------------------------------------------------------|
-| `register_intent`   | `add_intent` on the domain container + seed router       |
+| `register_intent`   | `register_domain_intent(skill_id, creator)`              |
 | `detach_intent`     | `remove_domain_intent(domain, name)`                     |
 | `detach_skill`      | `remove_domain(skill_id)` (drops the whole sub-container)|
 

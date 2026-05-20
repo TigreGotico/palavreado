@@ -719,14 +719,15 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
 
 class DomainPalavreadoPipeline(PalavreadoPipeline):
-    """Hierarchical, two-level palavreado pipeline.
+    """Domain-grouped palavreado pipeline using parallel-argmax routing.
 
     Same behaviour and bus surface as :class:`PalavreadoPipeline` except the
     per-language container is a :class:`DomainIntentContainer`. Each
-    registered intent is routed to a domain == ``skill_id`` (taken from the
-    intent label's ``<skill_id>:<intent>`` prefix); matching first picks the
-    most likely domain via the domain router container and then resolves the
-    intent only within that domain.
+    registered intent is filed under a domain == ``skill_id`` (taken from
+    the intent label's ``<skill_id>:<intent>`` prefix); at match time every
+    domain sub-container is evaluated in parallel and the global argmax
+    wins. A short-circuit on exact-confidence matches skips remaining
+    domains when a sharp hit is found.
 
     Configuration is read from ``intents.palavreado_domain`` so this plugin
     can coexist with the flat plugin in the same OVOS instance. Accepts every
@@ -767,35 +768,13 @@ class DomainPalavreadoPipeline(PalavreadoPipeline):
     def _add_intent(self, container: DomainIntentContainer, name: str,
                     creator: IntentCreator) -> None:  # type: ignore[override]
         domain = self._domain_of(name)
-        # Also seed the domain router with the intent's required keywords so
-        # the top-level classifier can pick this domain from utterances.
+        # Flat routing: just drop the intent into its domain sub-container.
+        # No router seeding — matching evaluates every domain in parallel
+        # and returns the global argmax.
         try:
             container.register_domain_intent(domain, creator)
         except RuntimeError:
             return
-        # Build a router seed for the domain from the intent's required slots.
-        try:
-            built = creator.build() if isinstance(creator, IntentCreator) else creator
-            samples: List[str] = []
-            for slot_samples in (built.get("required") or {}).values():
-                samples.extend(slot_samples)
-            if samples:
-                router_seed = IntentCreator(domain)
-                router_seed.require(f"{domain}__router_kw", samples)
-                if domain not in container.domain_engine.intent_names:
-                    container.domain_engine.add_intent(router_seed)
-                else:
-                    # Merge new samples into the existing router intent.
-                    existing = container.domain_engine.intents[domain]
-                    slot = f"{domain}__router_kw"
-                    cur = set(existing["required"].get(slot, []))
-                    cur.update(samples)
-                    container.domain_engine.remove_intent(domain)
-                    merged = IntentCreator(domain)
-                    merged.require(slot, sorted(cur))
-                    container.domain_engine.add_intent(merged)
-        except Exception as e:
-            LOG.debug(f"DomainPalavreadoPipeline: router seed skipped: {e}")
 
     def _remove_intent(self, container: DomainIntentContainer,
                        name: str) -> None:  # type: ignore[override]

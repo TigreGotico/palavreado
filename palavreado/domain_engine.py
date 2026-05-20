@@ -1,16 +1,17 @@
 """Domain-aware intent container for hierarchical intent organisation.
 
-Mirrors the design of :class:`nebulento.DomainIntentContainer` and
-:class:`ovos_padatious.DomainIntentContainer`: intents are grouped into
-*domains*, a top-level :class:`~palavreado.IntentContainer` first picks
-the domain, and the domain's sub-container resolves the intent.
+Intents are grouped into *domains*, each backed by its own
+:class:`~palavreado.IntentContainer`. At match time every sub-container is
+evaluated in parallel and the global argmax across all domains wins — no
+top-level router is involved. This mirrors the parallel-argmax pattern used
+by the adapt pipeline.
 
-This typically reduces both intent-search cost (per-domain containers are
-smaller) and false-positive rate on out-of-domain utterances (the
-top-level classifier rejects them before they reach any sub-container).
+Because palavreado is keyword/rule-based and per-domain evaluation is very
+cheap, parallel evaluation across hundreds of small containers costs
+essentially nothing. A configurable short-circuit threshold (default 1.0,
+i.e. exact match) lets a single sharp hit skip the remaining domains.
 """
 
-from collections import defaultdict
 from typing import Dict, List, Optional, Union
 
 from palavreado import IntentContainer
@@ -18,14 +19,12 @@ from palavreado.builder import IntentCreator
 
 
 class DomainIntentContainer:
-    """Two-level intent engine: domain classification followed by intent matching.
+    """Flat-routing intent engine grouped by *domain*.
 
-    Intents are grouped into *domains*. At query time the engine first
-    selects the most likely domain via :attr:`domain_engine`, then runs the
-    domain-specific container to find the best intent within that domain.
-
-    Domains can also be selected explicitly, bypassing the top-level
-    classifier.
+    Intents are organised into per-domain :class:`IntentContainer`\\ s. The
+    :meth:`calc_intent` method evaluates every domain's container and
+    returns the global argmax. A specific domain can be forced via the
+    ``domain`` argument.
 
     Example::
 
@@ -34,7 +33,6 @@ class DomainIntentContainer:
 
         d = DomainIntentContainer()
 
-        # Register intents inside their domains.
         play = IntentCreator("play")
         play.require("PlayKw", ["play", "put on"])
         d.register_domain_intent("media", play)
@@ -44,43 +42,34 @@ class DomainIntentContainer:
         lights.require("LightKw", ["lights", "lamp"])
         d.register_domain_intent("home", lights)
 
-        # Teach the domain classifier with representative utterances.
-        media_seed = IntentCreator("media")
-        media_seed.require("MediaKw", ["play", "song", "music", "next track"])
-        d.domain_engine.add_intent(media_seed)
-
-        home_seed = IntentCreator("home")
-        home_seed.require("HomeKw", ["lights", "thermostat", "lamp"])
-        d.domain_engine.add_intent(home_seed)
-
         result = d.calc_intent("play some jazz")
         # result["name"] == "play"
     """
 
-    def __init__(self) -> None:
-        #: Top-level classifier that maps queries to a domain name.
-        self.domain_engine: IntentContainer = IntentContainer()
+    #: Short-circuit threshold: stop iterating sub-engines as soon as one
+    #: returns a confidence >= this value. ``1.0`` means only an exact
+    #: match aborts the scan, which is the safe default — set lower if you
+    #: trust your confidence scoring and want maximum throughput.
+    DEFAULT_SHORTCIRCUIT_CONF: float = 1.0
+
+    def __init__(self, shortcircuit_conf: Optional[float] = None) -> None:
         #: Per-domain intent containers, keyed by domain name.
         self.domains: Dict[str, IntentContainer] = {}
-        #: Raw IntentCreators accumulated per domain (for inspection /
-        #: re-registration). Each value is a list of creators registered
-        #: under that domain.
-        self.training_data: Dict[str, List[Union[IntentCreator, dict]]] = defaultdict(list)
+        #: Confidence threshold at which parallel evaluation stops early.
+        self.shortcircuit_conf: float = (
+            self.DEFAULT_SHORTCIRCUIT_CONF if shortcircuit_conf is None
+            else shortcircuit_conf
+        )
 
     # ── domain management ──────────────────────────────────────────────────
 
     def remove_domain(self, domain_name: str) -> None:
-        """Remove a domain and all its intents and training data.
+        """Remove a domain and all its intents.
 
         Args:
             domain_name: Domain to remove.
         """
-        self.training_data.pop(domain_name, None)
         self.domains.pop(domain_name, None)
-        try:
-            self.domain_engine.remove_intent(domain_name)
-        except Exception:
-            pass
 
     # ── intent management ──────────────────────────────────────────────────
 
@@ -97,7 +86,6 @@ class DomainIntentContainer:
         if domain_name not in self.domains:
             self.domains[domain_name] = IntentContainer()
         self.domains[domain_name].add_intent(intent)
-        self.training_data[domain_name].append(intent)
 
     def remove_domain_intent(self, domain_name: str,
                               intent_name: Union[str, IntentCreator, dict]) -> None:
@@ -113,13 +101,9 @@ class DomainIntentContainer:
 
     # ── query API ──────────────────────────────────────────────────────────
 
-    def calc_domain(self, query: str) -> dict:
-        """Run the top-level classifier and return the best matching domain.
-
-        Returns the raw match dict produced by the top-level
-        :class:`IntentContainer` — ``name`` is the chosen domain.
-        """
-        return self.domain_engine.calc_intent(query)
+    def _empty_result(self, query: str) -> dict:
+        return {"name": None, "keywords": {}, "conf": 0.0,
+                "utterance": query, "utterance_remainder": query}
 
     def calc_intent(self, query: str,
                      domain: Optional[str] = None) -> dict:
@@ -127,18 +111,53 @@ class DomainIntentContainer:
 
         Args:
             query: The utterance to match.
-            domain: If given, skip the top-level classifier and resolve the
-                intent inside this domain directly.
+            domain: If given, route directly to this domain's sub-container
+                and skip the parallel scan.
 
         Returns:
-            The match dict from the resolved domain's container, or a
-            ``name=None`` dict if no domain matched.
+            The best match dict from any domain. When no intent matches,
+            returns a ``name=None`` dict.
         """
-        resolved_domain: Optional[str] = domain
-        if resolved_domain is None:
-            top = self.domain_engine.calc_intent(query)
-            resolved_domain = top.get("name") if top else None
-        if resolved_domain and resolved_domain in self.domains:
-            return self.domains[resolved_domain].calc_intent(query)
-        return {"name": None, "keywords": {}, "conf": 0.0,
-                "utterance": query, "utterance_remainder": query}
+        if domain is not None:
+            if domain in self.domains:
+                return self.domains[domain].calc_intent(query)
+            return self._empty_result(query)
+
+        best: Optional[dict] = None
+        best_conf: float = -1.0
+        for sub in self.domains.values():
+            result = sub.calc_intent(query)
+            if not result or not result.get("name"):
+                continue
+            conf = result.get("conf", 0.0)
+            if conf > best_conf:
+                best_conf = conf
+                best = result
+                # Short-circuit on a sharp match — skips remaining domains.
+                if conf >= self.shortcircuit_conf:
+                    break
+
+        if best is None:
+            return self._empty_result(query)
+        return best
+
+    def calc_intents(self, query: str, top_k: int = 5) -> List[dict]:
+        """Return the global top-*k* intent matches across all domains.
+
+        Args:
+            query: The utterance to match.
+            top_k: Maximum number of results to return, sorted by
+                descending confidence.
+
+        Returns:
+            A list of match dicts (possibly empty), sorted best-first.
+        """
+        results: List[dict] = []
+        for sub in self.domains.values():
+            best = sub.calc_intent(query)
+            if best and best.get("name"):
+                results.append(best)
+        results.sort(key=lambda r: r.get("conf", 0.0), reverse=True)
+        if top_k and top_k > 0:
+            return results[:top_k]
+        return results
