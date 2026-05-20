@@ -53,6 +53,7 @@ test = ["palavreado[dev]"]
 
 [project.entry-points."opm.pipeline"]
 palavreado = "palavreado.opm:PalavreadoPipeline"
+ovos-palavreado-domain-pipeline = "palavreado.opm:DomainPalavreadoPipeline"
 
 [project.urls]
 Homepage = "https://github.com/TigreGotico/palavreado"

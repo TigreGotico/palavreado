@@ -18,6 +18,7 @@ from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
 from palavreado.builder import IntentCreator
+from palavreado.domain_engine import DomainIntentContainer
 
 
 class PalavreadoPipeline(ConfidenceMatcherPipeline):
@@ -47,7 +48,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         # per-lang intent containers
         self.containers: Dict[str, IntentContainer] = {
-            lang: IntentContainer() for lang in langs
+            lang: self._build_container() for lang in langs
         }
         # per-lang vocab store: entity_type → [entity_value, ...]
         self._vocab: Dict[str, Dict[str, List[str]]] = {
@@ -95,6 +96,27 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self.bus.on("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
 
         LOG.debug("Loaded Palavreado pipeline")
+
+    # ── container-shape hooks — overridden by DomainPalavreadoPipeline ────────
+
+    def _build_container(self) -> IntentContainer:
+        """Create the per-language container instance."""
+        return IntentContainer()
+
+    def _add_intent(self, container: IntentContainer, name: str,
+                    creator: IntentCreator) -> None:
+        """Register *creator* on *container*. ``name`` is the intent label."""
+        container.add_intent(creator)
+
+    def _remove_intent(self, container: IntentContainer, name: str) -> None:
+        """Remove intent *name* from *container*."""
+        container.remove_intent(name)
+
+    def _remove_skill(self, container: IntentContainer, skill_id: str) -> None:
+        """Remove every intent belonging to *skill_id* from *container*."""
+        for intent_name in list(container.intent_names):
+            if intent_name.startswith(skill_id):
+                container.remove_intent(intent_name)
 
     # ── bus event handlers ────────────────────────────────────────────────────
 
@@ -169,7 +191,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         container = self.containers[lang]
         try:
-            container.add_intent(creator)
+            self._add_intent(container, intent.name, creator)
         except RuntimeError:
             # already registered (e.g. skill reload); skip silently
             pass
@@ -483,7 +505,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self._registered_intents = [i for i in self._registered_intents
                                      if i.get("name") != intent_name]
         for container in self.containers.values():
-            container.remove_intent(intent_name)
+            self._remove_intent(container, intent_name)
 
     def handle_detach_skill(self, message: Message) -> None:
         """Remove all intents and vocab belonging to a skill."""
@@ -503,9 +525,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             self._regexes[lang] = {k: v for k, v in regexes.items()
                                    if not k.startswith(skill_id)}
         for container in self.containers.values():
-            for intent_name in list(container.intent_names):
-                if intent_name.startswith(skill_id):
-                    container.remove_intent(intent_name)
+            self._remove_skill(container, skill_id)
 
     def handle_get_palavreado(self, message: Message) -> None:
         """Return the best intent match for a single utterance (debug/introspection)."""
@@ -696,6 +716,96 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self.bus.remove("intent.service.palavreado.get", self.handle_get_palavreado)
         self.bus.remove("intent.service.palavreado.manifest.get", self.handle_palavreado_manifest)
         self.bus.remove("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
+
+
+class DomainPalavreadoPipeline(PalavreadoPipeline):
+    """Hierarchical, two-level palavreado pipeline.
+
+    Same behaviour and bus surface as :class:`PalavreadoPipeline` except the
+    per-language container is a :class:`DomainIntentContainer`. Each
+    registered intent is routed to a domain == ``skill_id`` (taken from the
+    intent label's ``<skill_id>:<intent>`` prefix); matching first picks the
+    most likely domain via the domain router container and then resolves the
+    intent only within that domain.
+
+    Configuration is read from ``intents.palavreado_domain`` so this plugin
+    can coexist with the flat plugin in the same OVOS instance. Accepts every
+    key the flat plugin does.
+
+    Example ``mycroft.conf``::
+
+        "intents": {
+            "ovos-palavreado-domain-pipeline": {
+                "conf_high": 0.65,
+                "conf_med":  0.45,
+                "conf_low":  0.25
+            }
+        }
+    """
+
+    def __init__(self, bus: Optional[Union[MessageBusClient, FakeBus]] = None,
+                 config: Optional[Dict] = None) -> None:
+        if config is None:
+            core_config = Configuration()
+            config = (
+                core_config.get("intents", {}).get("palavreado_domain")
+                or core_config.get("palavreado_domain")
+                or {}
+            )
+        super().__init__(bus=bus, config=config)
+
+    # ── container-shape hooks ────────────────────────────────────────────────
+
+    @staticmethod
+    def _domain_of(name: str) -> str:
+        """Extract the domain (skill_id) from a ``skill_id:intent`` label."""
+        return name.split(":", 1)[0] if ":" in name else name
+
+    def _build_container(self) -> IntentContainer:  # type: ignore[override]
+        return DomainIntentContainer()
+
+    def _add_intent(self, container: DomainIntentContainer, name: str,
+                    creator: IntentCreator) -> None:  # type: ignore[override]
+        domain = self._domain_of(name)
+        # Also seed the domain router with the intent's required keywords so
+        # the top-level classifier can pick this domain from utterances.
+        try:
+            container.register_domain_intent(domain, creator)
+        except RuntimeError:
+            return
+        # Build a router seed for the domain from the intent's required slots.
+        try:
+            built = creator.build() if isinstance(creator, IntentCreator) else creator
+            samples: List[str] = []
+            for slot_samples in (built.get("required") or {}).values():
+                samples.extend(slot_samples)
+            if samples:
+                router_seed = IntentCreator(domain)
+                router_seed.require(f"{domain}__router_kw", samples)
+                if domain not in container.domain_engine.intent_names:
+                    container.domain_engine.add_intent(router_seed)
+                else:
+                    # Merge new samples into the existing router intent.
+                    existing = container.domain_engine.intents[domain]
+                    slot = f"{domain}__router_kw"
+                    cur = set(existing["required"].get(slot, []))
+                    cur.update(samples)
+                    container.domain_engine.remove_intent(domain)
+                    merged = IntentCreator(domain)
+                    merged.require(slot, sorted(cur))
+                    container.domain_engine.add_intent(merged)
+        except Exception as e:
+            LOG.debug(f"DomainPalavreadoPipeline: router seed skipped: {e}")
+
+    def _remove_intent(self, container: DomainIntentContainer,
+                       name: str) -> None:  # type: ignore[override]
+        domain = self._domain_of(name)
+        container.remove_domain_intent(domain, name)
+
+    def _remove_skill(self, container: DomainIntentContainer,
+                      skill_id: str) -> None:  # type: ignore[override]
+        # In domain mode the skill_id IS the domain.
+        container.remove_domain(skill_id)
 
 
 def _calc_palavreado_intent(utt: str,
