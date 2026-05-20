@@ -553,50 +553,6 @@ class TestBracketExpansion(unittest.TestCase):
         self.assertIn("hello world", result)
         self.assertIn("hello", result)
 
-    def test_matches_expand_template(self):
-        """Palavreado expansion must agree with the underlying expand_template helper."""
-        import re as _re
-        from palavreado._bracket_expansion import expand_template
-        sample = "turn (on|off) the [bright] lights"
-        canonical = sorted({
-            _re.sub(r" +", " ", e).strip() for e in expand_template(sample)
-        })
-        self.assertEqual(expand_parentheses(sample), canonical)
-
-
-class TestEndToEndTemplateExpansion(unittest.TestCase):
-    """End-to-end OVOS template support: (a|b), [opt], {slot}."""
-
-    def test_require_expands_alternatives_and_optionals(self):
-        intent = IntentCreator("lights").require(
-            "cmd", ["turn (on|off) the [bright] lights"]
-        )
-        container = IntentContainer()
-        container.add_intent(intent)
-        self.assertEqual(
-            sorted(container.intents["lights"]["required"]["cmd"]),
-            sorted([
-                "turn on the lights",
-                "turn off the lights",
-                "turn on the bright lights",
-                "turn off the bright lights",
-            ]),
-        )
-
-    def test_expand_template_slots_helper(self):
-        from palavreado.bracket_expansion import expand_template_slots
-        out = expand_template_slots(
-            "turn (on|off) the {device}",
-            {"device": ["lights", "fan"]},
-        )
-        self.assertEqual(
-            sorted(out),
-            sorted([
-                "turn on the lights", "turn off the lights",
-                "turn on the fan", "turn off the fan",
-            ]),
-        )
-
 
 class TestRegexSlots(unittest.TestCase):
 

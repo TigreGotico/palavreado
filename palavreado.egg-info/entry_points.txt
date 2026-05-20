@@ -1,0 +1,2 @@
+[opm.pipeline]
+palavreado = palavreado.opm:PalavreadoPipeline
