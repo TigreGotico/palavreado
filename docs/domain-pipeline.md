@@ -1,6 +1,6 @@
 # Domain-aware OVOS Pipeline Plugin
 
-palavreado ships a second OVOS pipeline plugin, `DomainPalavreadoPipeline`, exposed under its own OPM entry point. It behaves exactly like the flat `PalavreadoPipeline` from a skill's point of view — same `register_vocab` / `register_intent` / `detach_intent` / `detach_skill` bus surface — but internally uses a `DomainIntentContainer` to group intents by skill and evaluate them with a **parallel-argmax** strategy.
+palavreado ships a second OVOS pipeline plugin, `DomainPalavreadoPipeline`, exposed under its own OPM entry point. It behaves exactly like the flat `PalavreadoPipeline` from a skill's point of view — same `register_vocab` / `register_intent` / `detach_intent` / `detach_skill` bus surface — but internally uses a `DomainIntentContainer` to group intents by skill and resolve them with **two-stage routing**.
 
 Source: `palavreado/opm.py` (`DomainPalavreadoPipeline`)
 
@@ -53,7 +53,7 @@ Every key understood by the flat plugin is also understood here.
 
 ---
 
-## Parallel-argmax routing
+## Two-stage routing
 
 Each registered intent label is of the form `skill_id:intent_name`. The plugin treats the `skill_id` prefix as the **domain**.
 
@@ -64,18 +64,20 @@ register_intent skill_b:play_music ──►  domain = "skill_b"
                                         intent  = "skill_b:play_music"
 ```
 
-At match time, every domain sub-container is evaluated against the utterance and the **global argmax** by confidence wins. There is no top-level router, no seed step, and no two-stage gating — the per-domain containers are small and keyword-rule-based, so parallel evaluation is essentially free.
+At match time the `DomainIntentContainer` runs two stages:
 
-A configurable short-circuit threshold (default `1.0`, i.e. exact match) on `DomainIntentContainer.shortcircuit_conf` lets a single sharp hit skip the remaining domains. For 100 domains, an exact match on the first one skips 99 evaluations.
+1. **Domain classification** — a top-level `domain_engine` classifies the utterance into a domain. Its per-domain entry is the union of every keyword sample registered under that domain, so a domain fires when the utterance contains any of its keywords.
+2. **Intent resolution** — only the winning domain's sub-container is evaluated to pick the concrete intent.
 
-Registration is now just:
+An utterance that matches no domain is rejected at stage one, before any sub-container is evaluated — unrelated chitchat does not reach a skill.
+
+The domain classifier is maintained automatically; registering an intent folds its keywords into the classifier, so no separate seeding step is required:
 
 ```python
 d = DomainIntentContainer()
 d.register_domain_intent("home", lights_intent)
 d.register_domain_intent("media", play_intent)
 
-# no seeding needed
 result = d.calc_intent("play some jazz")
 top5  = d.calc_intents("play some jazz", top_k=5)
 ```

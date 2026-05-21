@@ -719,15 +719,15 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
 
 class DomainPalavreadoPipeline(PalavreadoPipeline):
-    """Domain-grouped palavreado pipeline using parallel-argmax routing.
+    """Domain-grouped palavreado pipeline using two-stage routing.
 
     Same behaviour and bus surface as :class:`PalavreadoPipeline` except the
     per-language container is a :class:`DomainIntentContainer`. Each
     registered intent is filed under a domain == ``skill_id`` (taken from
-    the intent label's ``<skill_id>:<intent>`` prefix); at match time every
-    domain sub-container is evaluated in parallel and the global argmax
-    wins. A short-circuit on exact-confidence matches skips remaining
-    domains when a sharp hit is found.
+    the intent label's ``<skill_id>:<intent>`` prefix); at match time a
+    top-level classifier picks the domain and only that domain's
+    sub-container resolves the intent. Utterances that match no domain are
+    rejected before any sub-container runs.
 
     Configuration is read from ``intents.palavreado_domain`` so this plugin
     can coexist with the flat plugin in the same OVOS instance. Accepts every
@@ -768,9 +768,6 @@ class DomainPalavreadoPipeline(PalavreadoPipeline):
     def _add_intent(self, container: DomainIntentContainer, name: str,
                     creator: IntentCreator) -> None:  # type: ignore[override]
         domain = self._domain_of(name)
-        # Flat routing: just drop the intent into its domain sub-container.
-        # No router seeding — matching evaluates every domain in parallel
-        # and returns the global argmax.
         try:
             container.register_domain_intent(domain, creator)
         except RuntimeError:
