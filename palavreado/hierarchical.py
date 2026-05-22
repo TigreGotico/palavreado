@@ -1,7 +1,7 @@
-"""Domain-aware intent container for hierarchical intent matching.
+"""Hierarchical intent container: domain classification, then intent matching.
 
 Intents are grouped into *domains*. A top-level classifier
-(:attr:`DomainIntentContainer.domain_engine`) maps an utterance to a domain,
+(:attr:`HierarchicalIntentContainer.domain_engine`) maps an utterance to a domain,
 then that domain's :class:`~palavreado.IntentContainer` resolves the concrete
 intent. Utterances that match no domain are rejected before any sub-container
 runs, so unrelated chitchat does not trigger a skill.
@@ -27,7 +27,7 @@ def _intent_name(intent: Union[str, IntentCreator, dict]) -> Optional[str]:
     return intent
 
 
-class DomainIntentContainer:
+class HierarchicalIntentContainer:
     """Two-stage intent engine: domain classification, then intent matching.
 
     Intents are organised into per-domain :class:`IntentContainer`\\ s. A
@@ -37,10 +37,10 @@ class DomainIntentContainer:
 
     Example::
 
-        from palavreado import DomainIntentContainer
+        from palavreado import HierarchicalIntentContainer
         from palavreado.builder import IntentCreator
 
-        d = DomainIntentContainer()
+        d = HierarchicalIntentContainer()
 
         play = IntentCreator("play").require("PlayKw", ["play", "put on"])
         d.register_domain_intent("media", play)

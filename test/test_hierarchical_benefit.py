@@ -1,5 +1,5 @@
 """Toy benchmark: an utterance the flat container misclassifies but
-the DomainIntentContainer gets right.
+the HierarchicalIntentContainer gets right.
 
 Two skills share a "set X" surface — ``set_thermostat`` (home) and
 ``set_volume`` (media). With every intent in a single flat container,
@@ -12,7 +12,7 @@ import unittest
 
 from palavreado import IntentContainer
 from palavreado.builder import IntentCreator
-from palavreado.domain_engine import DomainIntentContainer
+from palavreado.hierarchical import HierarchicalIntentContainer
 
 
 def _home_intents():
@@ -50,7 +50,7 @@ class TestDomainBeatsFlat(unittest.TestCase):
             flat.add_intent(intent)
         flat_match = flat.calc_intent(AMBIGUOUS)
 
-        domain = DomainIntentContainer()
+        domain = HierarchicalIntentContainer()
         for intent in _home_intents():
             domain.register_domain_intent("home", intent)
         for intent in _media_intents():

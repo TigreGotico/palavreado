@@ -468,6 +468,5 @@ class IntentContainer:
         return best
 
 
-# Re-export DomainIntentContainer at the package root for parity with
-# nebulento and ovos-padatious.
-from palavreado.domain_engine import DomainIntentContainer  # noqa: E402, F401
+# Re-export HierarchicalIntentContainer at the package root.
+from palavreado.hierarchical import HierarchicalIntentContainer  # noqa: E402, F401

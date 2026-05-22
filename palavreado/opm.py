@@ -18,7 +18,7 @@ from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
 from palavreado.builder import IntentCreator
-from palavreado.domain_engine import DomainIntentContainer
+from palavreado.hierarchical import HierarchicalIntentContainer
 
 
 class PalavreadoPipeline(ConfidenceMatcherPipeline):
@@ -97,7 +97,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         LOG.debug("Loaded Palavreado pipeline")
 
-    # ── container-shape hooks — overridden by DomainPalavreadoPipeline ────────
+    # ── container-shape hooks — overridden by HierarchicalPalavreadoPipeline ────────
 
     def _build_container(self) -> IntentContainer:
         """Create the per-language container instance."""
@@ -718,25 +718,25 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self.bus.remove("intent.service.palavreado.vocab.manifest.get", self.handle_vocab_manifest)
 
 
-class DomainPalavreadoPipeline(PalavreadoPipeline):
-    """Domain-grouped palavreado pipeline using two-stage routing.
+class HierarchicalPalavreadoPipeline(PalavreadoPipeline):
+    """Hierarchical palavreado pipeline using two-stage domain routing.
 
     Same behaviour and bus surface as :class:`PalavreadoPipeline` except the
-    per-language container is a :class:`DomainIntentContainer`. Each
+    per-language container is a :class:`HierarchicalIntentContainer`. Each
     registered intent is filed under a domain == ``skill_id`` (taken from
     the intent label's ``<skill_id>:<intent>`` prefix); at match time a
     top-level classifier picks the domain and only that domain's
     sub-container resolves the intent. Utterances that match no domain are
     rejected before any sub-container runs.
 
-    Configuration is read from ``intents.palavreado_domain`` so this plugin
+    Configuration is read from ``intents.palavreado_hierarchical`` so this plugin
     can coexist with the flat plugin in the same OVOS instance. Accepts every
     key the flat plugin does.
 
     Example ``mycroft.conf``::
 
         "intents": {
-            "ovos-palavreado-domain-pipeline": {
+            "ovos-palavreado-hierarchical-pipeline": {
                 "conf_high": 0.65,
                 "conf_med":  0.45,
                 "conf_low":  0.25
@@ -749,8 +749,8 @@ class DomainPalavreadoPipeline(PalavreadoPipeline):
         if config is None:
             core_config = Configuration()
             config = (
-                core_config.get("intents", {}).get("palavreado_domain")
-                or core_config.get("palavreado_domain")
+                core_config.get("intents", {}).get("palavreado_hierarchical")
+                or core_config.get("palavreado_hierarchical")
                 or {}
             )
         super().__init__(bus=bus, config=config)
@@ -763,9 +763,9 @@ class DomainPalavreadoPipeline(PalavreadoPipeline):
         return name.split(":", 1)[0] if ":" in name else name
 
     def _build_container(self) -> IntentContainer:  # type: ignore[override]
-        return DomainIntentContainer()
+        return HierarchicalIntentContainer()
 
-    def _add_intent(self, container: DomainIntentContainer, name: str,
+    def _add_intent(self, container: HierarchicalIntentContainer, name: str,
                     creator: IntentCreator) -> None:  # type: ignore[override]
         domain = self._domain_of(name)
         try:
@@ -773,12 +773,12 @@ class DomainPalavreadoPipeline(PalavreadoPipeline):
         except RuntimeError:
             return
 
-    def _remove_intent(self, container: DomainIntentContainer,
+    def _remove_intent(self, container: HierarchicalIntentContainer,
                        name: str) -> None:  # type: ignore[override]
         domain = self._domain_of(name)
         container.remove_domain_intent(domain, name)
 
-    def _remove_skill(self, container: DomainIntentContainer,
+    def _remove_skill(self, container: HierarchicalIntentContainer,
                       skill_id: str) -> None:  # type: ignore[override]
         # In domain mode the skill_id IS the domain.
         container.remove_domain(skill_id)

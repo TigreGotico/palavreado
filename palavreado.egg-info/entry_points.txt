@@ -1,0 +1,3 @@
+[opm.pipeline]
+ovos-palavreado-hierarchical-pipeline = palavreado.opm:HierarchicalPalavreadoPipeline
+palavreado = palavreado.opm:PalavreadoPipeline
