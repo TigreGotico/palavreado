@@ -8,7 +8,7 @@ Builder helpers for constructing palavreado intents programmatically.
 import simplematch as sm
 from typing import List, Union
 
-from palavreado.bracket_expansion import expand_parentheses
+from ovos_spec_tools import expand as _spec_expand
 
 
 def pattern2regex(pattern: str, case_sensitive: bool = False) -> str:
@@ -41,7 +41,14 @@ def expand_samples(samples: Union[str, List[str]]) -> List[str]:
         samples = [samples]
     expanded = []
     for line in samples:
-        expanded += expand_parentheses(line)
+        # spec-tools expand enforces OVOS-INTENT-1 slot-name rules; palavreado
+        # also accepts simplematch typed slots like {n:int} via autoregex.
+        # Skip expansion when there are no bracket alternatives to expand.
+        if "(" not in line and "[" not in line:
+            expanded.append(line)
+        else:
+            # sorted for determinism — matches legacy expand_parentheses behaviour
+            expanded += sorted(_spec_expand(line))
     return expanded
 
 

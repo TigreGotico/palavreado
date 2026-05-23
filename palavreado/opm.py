@@ -3,16 +3,15 @@
 import time
 from typing import Dict, List, Optional, Union
 
-from langcodes import closest_match
 from ovos_bus_client.client import MessageBusClient
 from ovos_bus_client.message import Message
 from ovos_bus_client.session import SessionManager, Session
 from ovos_bus_client.util import get_message_lang
 from ovos_config.config import Configuration
 from ovos_plugin_manager.templates.pipeline import ConfidenceMatcherPipeline, IntentHandlerMatch
+from ovos_spec_tools import closest_lang, standardize_lang
 from ovos_utils import flatten_list
 from ovos_utils.fakebus import FakeBus
-from ovos_utils.lang import standardize_lang_tag
 from ovos_utils.log import LOG
 from ovos_spec_tools import SpecMessage, gate_satisfied, is_live
 from ovos_workshop.intents import open_intent_envelope
@@ -35,11 +34,11 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         config = config or core_config.get("intents", {}).get("palavreado", {}) or core_config.get("palavreado", {})
         super().__init__(bus=bus, config=config)
 
-        self.lang = standardize_lang_tag(core_config.get("lang", "en-US"))
+        self.lang = standardize_lang(core_config.get("lang", "en-US"))
         langs = core_config.get("secondary_langs") or []
         if self.lang not in langs:
             langs.append(self.lang)
-        langs = [standardize_lang_tag(lang) for lang in langs]
+        langs = [standardize_lang(lang) for lang in langs]
 
         self.conf_high = self.config.get("conf_high") or 0.65
         self.conf_med = self.config.get("conf_med") or 0.45
@@ -109,8 +108,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         - ``regex``:        (optional) raw regex string instead of a keyword
         - ``lang``:         BCP-47 language tag
         """
-        lang = standardize_lang_tag(get_message_lang(message))
-        lang = self._resolve_lang(lang)
+        lang = self._resolve_lang(get_message_lang(message))
         if lang is None:
             return
 
@@ -142,8 +140,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         accumulated vocab store.
         """
         intent = open_intent_envelope(message)
-        lang = standardize_lang_tag(get_message_lang(message))
-        lang = self._resolve_lang(lang)
+        lang = self._resolve_lang(get_message_lang(message))
         if lang is None:
             return
 
@@ -683,9 +680,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
     def _resolve_lang(self, lang: str) -> Optional[str]:
         if not self.containers:
             return None
-        lang = standardize_lang_tag(lang)
-        closest, score = closest_match(lang, list(self.containers.keys()))
-        return closest if score < 10 else None
+        return closest_lang(standardize_lang(lang), list(self.containers.keys()))
 
     def shutdown(self) -> None:
         self.bus.remove("register_vocab", self.handle_register_vocab)
