@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0a2](https://github.com/OpenVoiceOS/palavreado/tree/1.2.0a2) (2026-06-13)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.2.0a1...1.2.0a2)
+
+**Merged pull requests:**
+
+- docs: standardize NGI0 Commons Fund attribution [\#26](https://github.com/OpenVoiceOS/palavreado/pull/26) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.2.0a1) (2026-05-14)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.1.0a4...1.2.0a1)
