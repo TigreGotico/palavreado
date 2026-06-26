@@ -32,7 +32,7 @@ ovos = [
     "ovos-plugin-manager",
     "ovos-utils",
     "ovos-workshop",
-    "ovos-spec-tools>=0.10.0a1",
+    "ovos-spec-tools>=0.11.0a1",
     "langcodes",
 ]
 dev = [
@@ -43,7 +43,7 @@ dev = [
     "ovos-plugin-manager",
     "ovos-utils",
     "ovos-workshop",
-    "ovos-spec-tools>=0.10.0a1",
+    "ovos-spec-tools>=0.11.0a1",
     "langcodes",
 ]
 test = ["palavreado[dev]"]
