@@ -193,5 +193,163 @@ class TestPalavreadoPipelineOptional(unittest.TestCase):
         self.assertGreaterEqual(r_with.match_data["conf"], r_without.match_data["conf"])
 
 
+class TestPalavreadoIntent4(unittest.TestCase):
+    """OVOS-INTENT-4 keyword registration consumed alongside legacy topics."""
+
+    def setUp(self):
+        from ovos_spec_tools import SpecMessage
+        self.SpecMessage = SpecMessage
+        self.bus = mock.Mock()
+        self.pipeline = PalavreadoPipeline(bus=self.bus, config={})
+
+    def _register_lights(self):
+        # OVOS-INTENT-4 §5.2 keyword payload, all four roles present
+        msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
+            "skill_id": "lighting.skill",
+            "intent_name": "set_brightness",
+            "lang": "en-US",
+            "required": [
+                {"name": "set", "samples": ["set", "change", "adjust"]},
+                {"name": "brightness", "samples": ["brightness", "light level"]},
+            ],
+            "optional": [],
+            "one_of": [
+                [
+                    {"name": "up", "samples": ["up", "higher", "brighter"]},
+                    {"name": "down", "samples": ["down", "lower", "dimmer"]},
+                ]
+            ],
+            "excluded": [
+                {"name": "question", "samples": ["what is", "how"]},
+            ],
+        }, context={"skill_id": "lighting.skill"})
+        self.pipeline.handle_register_keyword_intent(msg)
+
+    def test_register_keyword_intent_and_match(self):
+        self._register_lights()
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": ["set brightness higher"], "lang": "en-US"})
+        result = self.pipeline.match_low(["set brightness higher"], "en-US", msg)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_type, "lighting.skill:set_brightness")
+        self.assertEqual(result.skill_id, "lighting.skill")
+
+    def test_excluded_suppresses_match(self):
+        self._register_lights()
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": ["what is the brightness"], "lang": "en-US"})
+        result = self.pipeline.match_low(["what is the brightness"], "en-US", msg)
+        self.assertIsNone(result)
+
+    def test_missing_role_key_rejected(self):
+        msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
+            "skill_id": "skill.x", "intent_name": "bad", "lang": "en-US",
+            "required": [{"name": "kw", "samples": ["foo"]}],
+            # missing optional / one_of / excluded
+        })
+        self.pipeline.handle_register_keyword_intent(msg)
+        names = [i["name"] for i in self.pipeline._registered_intents]
+        self.assertNotIn("skill.x:bad", names)
+
+    def test_required_and_one_of_empty_rejected(self):
+        msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
+            "skill_id": "skill.x", "intent_name": "empty", "lang": "en-US",
+            "required": [], "optional": [{"name": "o", "samples": ["x"]}],
+            "one_of": [], "excluded": [],
+        })
+        self.pipeline.handle_register_keyword_intent(msg)
+        names = [i["name"] for i in self.pipeline._registered_intents]
+        self.assertNotIn("skill.x:empty", names)
+
+    def test_empty_samples_rejected(self):
+        msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
+            "skill_id": "skill.x", "intent_name": "nosamples", "lang": "en-US",
+            "required": [{"name": "kw", "samples": []}],
+            "optional": [], "one_of": [], "excluded": [],
+        })
+        self.pipeline.handle_register_keyword_intent(msg)
+        names = [i["name"] for i in self.pipeline._registered_intents]
+        self.assertNotIn("skill.x:nosamples", names)
+
+    def test_duplicate_role_rejected(self):
+        msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
+            "skill_id": "skill.x", "intent_name": "dup", "lang": "en-US",
+            "required": [{"name": "kw", "samples": ["a"]}],
+            "optional": [{"name": "kw", "samples": ["b"]}],
+            "one_of": [], "excluded": [],
+        })
+        self.pipeline.handle_register_keyword_intent(msg)
+        names = [i["name"] for i in self.pipeline._registered_intents]
+        self.assertNotIn("skill.x:dup", names)
+
+    def test_disable_then_enable(self):
+        self._register_lights()
+        utt = ["set brightness higher"]
+        msg = Message("recognizer_loop:utterance", {"utterances": utt, "lang": "en-US"})
+
+        self.pipeline.handle_intent_disable(Message(
+            str(self.SpecMessage.INTENT_DISABLE),
+            {"skill_id": "lighting.skill", "intent_name": "set_brightness"}))
+        self.assertIsNone(self.pipeline.match_low(utt, "en-US", msg))
+
+        self.pipeline.handle_intent_enable(Message(
+            str(self.SpecMessage.INTENT_ENABLE),
+            {"skill_id": "lighting.skill", "intent_name": "set_brightness"}))
+        self.assertIsNotNone(self.pipeline.match_low(utt, "en-US", msg))
+
+    def test_deregister_removes_intent(self):
+        self._register_lights()
+        self.pipeline.handle_intent_deregister(Message(
+            str(self.SpecMessage.INTENT_DEREGISTER),
+            {"skill_id": "lighting.skill", "intent_name": "set_brightness"}))
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": ["set brightness higher"], "lang": "en-US"})
+        self.assertIsNone(self.pipeline.match_low(["set brightness higher"], "en-US", msg))
+
+    def test_skill_deregister_removes_all(self):
+        self._register_lights()
+        self.pipeline.handle_skill_deregister(Message(
+            str(self.SpecMessage.SKILL_DEREGISTER), {"skill_id": "lighting.skill"}))
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": ["set brightness higher"], "lang": "en-US"})
+        self.assertIsNone(self.pipeline.match_low(["set brightness higher"], "en-US", msg))
+        self.assertEqual(self.pipeline._registered_intents, [])
+
+    def test_register_entity_stored(self):
+        self.pipeline.handle_register_entity(Message(
+            str(self.SpecMessage.ENTITY_REGISTER), {
+                "skill_id": "music.skill", "entity_name": "engine", "lang": "en-US",
+                "samples": ["spotify", "youtube music"],
+            }))
+        self.assertIn("spotify", self.pipeline._vocab["en-US"]["engine"])
+
+    def test_register_entity_empty_samples_rejected(self):
+        self.pipeline.handle_register_entity(Message(
+            str(self.SpecMessage.ENTITY_REGISTER), {
+                "skill_id": "music.skill", "entity_name": "engine", "lang": "en-US",
+                "samples": [],
+            }))
+        self.assertNotIn("engine", self.pipeline._vocab["en-US"])
+
+    def test_re_registration_replaces(self):
+        self._register_lights()
+        # re-register with different required vocab — must replace, not raise
+        self._register_lights()
+        count = len([i for i in self.pipeline._registered_intents
+                     if i["name"] == "lighting.skill:set_brightness"])
+        self.assertEqual(count, 1)
+
+    def test_legacy_topics_still_work(self):
+        # back-compat: legacy register_vocab + register_intent path unaffected
+        from ovos_workshop.intents import IntentBuilder
+        self.pipeline.handle_register_vocab(_vocab_msg("Hi", "hello"))
+        builder = IntentBuilder("legacy:HiIntent").require("Hi")
+        self.pipeline.handle_register_intent(_intent_msg(builder))
+        msg = Message("recognizer_loop:utterance", {"utterances": ["hello"], "lang": "en-US"})
+        result = self.pipeline.match_high(["hello"], "en-US", msg)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_type, "legacy:HiIntent")
+
+
 if __name__ == "__main__":
     unittest.main()
