@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.3.0a1) (2026-06-27)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.2.0a2...1.3.0a1)
+
+**Merged pull requests:**
+
+- feat: consume OVOS-INTENT-4 keyword registration \(alongside legacy\) [\#28](https://github.com/OpenVoiceOS/palavreado/pull/28) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.2.0a2](https://github.com/OpenVoiceOS/palavreado/tree/1.2.0a2) (2026-06-13)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.2.0a1...1.2.0a2)
