@@ -580,9 +580,9 @@ def _calc_palavreado_intent(utt: str,
         result = container.calc_intent(utt)
         if not result.get("name"):
             return None
-        if result["name"] in sess.blacklisted_intents:
+        if result["name"] in (sess.blacklisted_intents or []):
             return None
-        if result["name"].split(":")[0] in sess.blacklisted_skills:
+        if result["name"].split(":")[0] in (sess.blacklisted_skills or []):
             return None
         return result
     except Exception as e:

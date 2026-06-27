@@ -27,23 +27,23 @@ dependencies = ["simplematch", "quebra_frases"]
 
 [project.optional-dependencies]
 ovos = [
-    "ovos-bus-client",
+    "ovos-bus-client>=2.4.0a1",
     "ovos-config",
     "ovos-plugin-manager",
     "ovos-utils",
     "ovos-workshop",
-    "ovos-spec-tools>=0.11.0a1",
+    "ovos-spec-tools>=0.16.1a2",
     "langcodes",
 ]
 dev = [
     "pytest",
     "pytest-cov",
-    "ovos-bus-client",
+    "ovos-bus-client>=2.4.0a1",
     "ovos-config",
     "ovos-plugin-manager",
     "ovos-utils",
     "ovos-workshop",
-    "ovos-spec-tools>=0.11.0a1",
+    "ovos-spec-tools>=0.16.1a2",
     "langcodes",
 ]
 test = ["palavreado[dev]"]
