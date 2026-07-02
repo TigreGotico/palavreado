@@ -351,5 +351,92 @@ class TestPalavreadoIntent4(unittest.TestCase):
         self.assertEqual(result.match_type, "legacy:HiIntent")
 
 
+class TestPalavreadoContext1(unittest.TestCase):
+    """OVOS-CONTEXT-1 requires_context / excludes_context gating at match time."""
+
+    def setUp(self):
+        from ovos_spec_tools import SpecMessage
+        self.SpecMessage = SpecMessage
+        self.bus = mock.Mock()
+        self.pipeline = PalavreadoPipeline(bus=self.bus, config={})
+
+    def _register(self, requires=None, excludes=None):
+        data = {
+            "skill_id": "lighting.skill",
+            "intent_name": "set_brightness",
+            "lang": "en-US",
+            "required": [{"name": "set", "samples": ["set brightness"]}],
+            "optional": [],
+            "one_of": [],
+            "excluded": [],
+        }
+        if requires is not None:
+            data["requires_context"] = requires
+        if excludes is not None:
+            data["excludes_context"] = excludes
+        self.pipeline.handle_register_keyword_intent(
+            Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), data,
+                    context={"skill_id": "lighting.skill"}))
+
+    def _match(self, sess):
+        from ovos_bus_client.session import SessionManager
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": ["set brightness"], "lang": "en-US"})
+        with mock.patch.object(SessionManager, "get", return_value=sess):
+            return self.pipeline.match_low(["set brightness"], "en-US", msg)
+
+    @staticmethod
+    def _live_context(**entries):
+        # a live OVOS-CONTEXT-1 entry: no expiry → always live
+        from ovos_bus_client.session import Session
+        sess = Session("ctx-session")
+        sess.intent_context = {k: {"value": v} for k, v in entries.items()}
+        return sess
+
+    def test_no_gate_matches(self):
+        # a registration without gating declarations is unaffected
+        self._register()
+        self.assertNotIn("lighting.skill:set_brightness",
+                         self.pipeline._context_gates)  # gate NOT stored
+        result = self._match(self._live_context())
+        self.assertIsNotNone(result)
+
+    def test_requires_context_present_matches(self):
+        self._register(requires=["lights_on"])
+        # private-scope key stored as "<owner>:<key>"
+        result = self._match(self._live_context(**{"lighting.skill:lights_on": True}))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_type, "lighting.skill:set_brightness")
+
+    def test_requires_context_absent_dropped(self):
+        self._register(requires=["lights_on"])
+        result = self._match(self._live_context())  # no context active
+        self.assertIsNone(result)
+
+    def test_requires_context_mapping_scope(self):
+        # explicit shared scope stores under the bare key (no owner prefix)
+        self._register(requires=[{"key": "away_mode", "scope": "shared"}])
+        self.assertIsNone(self._match(self._live_context()))
+        self.assertIsNotNone(self._match(self._live_context(away_mode=True)))
+
+    def test_excludes_context_present_dropped(self):
+        self._register(excludes=["do_not_disturb"])
+        result = self._match(
+            self._live_context(**{"lighting.skill:do_not_disturb": True}))
+        self.assertIsNone(result)
+
+    def test_excludes_context_absent_matches(self):
+        self._register(excludes=["do_not_disturb"])
+        result = self._match(self._live_context())
+        self.assertIsNotNone(result)
+
+    def test_gate_cleared_on_deregister(self):
+        self._register(requires=["lights_on"])
+        self.pipeline.handle_intent_deregister(Message(
+            str(self.SpecMessage.INTENT_DEREGISTER),
+            {"skill_id": "lighting.skill", "intent_name": "set_brightness"}))
+        self.assertNotIn("lighting.skill:set_brightness", self.pipeline._context_gates)
+
+
 if __name__ == "__main__":
     unittest.main()

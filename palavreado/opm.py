@@ -13,7 +13,7 @@ from ovos_utils import flatten_list
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.lang import standardize_lang_tag
 from ovos_utils.log import LOG
-from ovos_spec_tools import SpecMessage
+from ovos_spec_tools import SpecMessage, gate_satisfied
 from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
@@ -61,6 +61,11 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         # disabled intents (OVOS-INTENT-4 §8.5) — excluded from matching but kept
         self._disabled_intents: set = set()
+
+        # OVOS-CONTEXT-1 gating declarations, keyed by internal intent name →
+        # {"requires": [...], "excludes": [...]}.  Enforced at match time via
+        # ovos_spec_tools.gate_satisfied (separate/additive to excluded_keywords).
+        self._context_gates: Dict[str, dict] = {}
 
         # ── legacy registration topics (back-compat) ──────────────────────────
         self.bus.on("register_vocab", self.handle_register_vocab)
@@ -164,6 +169,12 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             # already registered (e.g. skill reload); skip silently
             pass
 
+        # OVOS-CONTEXT-1: legacy envelopes MAY also carry gating declarations
+        self._context_gates.pop(intent.name, None)
+        gate = self._context_gate(message.data)
+        if gate is not None:
+            self._context_gates[intent.name] = gate
+
         self._registered_intents.append(intent.__dict__)
 
     # ── OVOS-INTENT-4 handlers ────────────────────────────────────────────────
@@ -179,6 +190,23 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         if intent_name.startswith(f"{skill_id}:"):
             return intent_name
         return f"{skill_id}:{intent_name}"
+
+    @staticmethod
+    def _context_gate(data: dict) -> Optional[dict]:
+        """Extract OVOS-CONTEXT-1 ``requires_context``/``excludes_context``.
+
+        Each field is an optional list of bare-string keys or
+        ``{"key", "scope"}`` mappings (default private).  The declarations are
+        stored verbatim and handed to :func:`gate_satisfied` at match time,
+        which owns normalization, scope resolution, liveness and decay — so no
+        interpretation happens here.  Returns ``None`` when neither field is
+        present (nothing to gate).
+        """
+        requires = data.get("requires_context")
+        excludes = data.get("excludes_context")
+        if not requires and not excludes:
+            return None
+        return {"requires": list(requires or []), "excludes": list(excludes or [])}
 
     @staticmethod
     def _descriptor_samples(descriptor: dict) -> List[str]:
@@ -281,6 +309,12 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         container.remove_intent(internal_name)
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
+        self._context_gates.pop(internal_name, None)
+
+        # OVOS-CONTEXT-1: store optional context gating for this intent
+        gate = self._context_gate(data)
+        if gate is not None:
+            self._context_gates[internal_name] = gate
 
         creator = IntentCreator(internal_name)
         for descriptor in required:
@@ -361,6 +395,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             return
         internal_name = self._spec_intent_name(skill_id, intent_name)
         self._disabled_intents.discard(internal_name)
+        self._context_gates.pop(internal_name, None)
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
         for container in self.containers.values():
@@ -386,6 +421,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         prefix = f"{skill_id}:"
         self._disabled_intents = {n for n in self._disabled_intents
                                   if not n.startswith(prefix)}
+        self._context_gates = {n: g for n, g in self._context_gates.items()
+                               if not n.startswith(prefix)}
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("skill_id") != skill_id
                                     and not i.get("name", "").startswith(prefix)]
@@ -419,6 +456,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         intent_name = message.data.get("intent_name")
         if not intent_name:
             return
+        self._context_gates.pop(intent_name, None)
         self._registered_intents = [i for i in self._registered_intents
                                      if i.get("name") != intent_name]
         for container in self.containers.values():
@@ -427,6 +465,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
     def handle_detach_skill(self, message: Message) -> None:
         """Remove all intents and vocab belonging to a skill."""
         skill_id = message.data.get("skill_id", "")
+        self._context_gates = {n: g for n, g in self._context_gates.items()
+                               if not n.startswith(skill_id)}
         self._registered_intents = [i for i in self._registered_intents
                                      if not i.get("name", "").startswith(skill_id)]
         self.registered_vocab = [v for v in self.registered_vocab
@@ -489,6 +529,23 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
     # ── intent calculation ────────────────────────────────────────────────────
 
+    def _context_gate_ok(self, name: str, sess: Session) -> bool:
+        """Return True if *name* passes its OVOS-CONTEXT-1 gating contract.
+
+        Intents with no ``requires_context``/``excludes_context`` declarations
+        are always permitted.  Otherwise delegate the whole decision (scope
+        resolution, liveness, decay) to :func:`gate_satisfied`, evaluated
+        against the session's ``intent_context`` snapshot with the intent's
+        ``skill_id`` as the private-scope owner.
+        """
+        gate = self._context_gates.get(name)
+        if not gate:
+            return True
+        owner_id = name.split(":")[0]
+        intent_context = getattr(sess, "intent_context", None) or {}
+        return gate_satisfied(intent_context, gate.get("requires"),
+                              gate.get("excludes"), owner_id=owner_id)
+
     def _match_intent(self, utterances: tuple, lang: Optional[str] = None,
                       message: Optional[str] = None) -> Optional[IntentHandlerMatch]:
         """Match utterances against registered intents, honouring session blacklists.
@@ -522,6 +579,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             result = _calc_palavreado_intent(utt, container, sess)
             if result and result["name"] in self._disabled_intents:
                 continue  # OVOS-INTENT-4 §8.5: disabled intents are not candidates
+            if result and not self._context_gate_ok(result["name"], sess):
+                continue  # OVOS-CONTEXT-1 §6: gating contract not satisfied
             if result and result["conf"] > best_conf:
                 best_conf = result["conf"]
                 best = result
