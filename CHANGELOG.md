@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.4.0a1) (2026-07-02)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.3.0a1...1.4.0a1)
+
+**Merged pull requests:**
+
+- feat: enforce OVOS-CONTEXT-1 gating at match time [\#30](https://github.com/OpenVoiceOS/palavreado/pull/30) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.3.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.3.0a1) (2026-06-27)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.2.0a2...1.3.0a1)
