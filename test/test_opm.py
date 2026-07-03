@@ -351,6 +351,96 @@ class TestPalavreadoIntent4(unittest.TestCase):
         self.assertEqual(result.match_type, "legacy:HiIntent")
 
 
+class TestPalavreadoContext1Injection(unittest.TestCase):
+    """OVOS-CONTEXT-1 §7 pre-match context injection for the keyword engine.
+
+    A live non-null string entry in ``session.intent_context`` is injected as a
+    candidate value for the intent keyword of the same name **before** matching,
+    so an intent requiring that keyword matches even when the utterance lacks it.
+    An utterance-provided value for the same keyword wins over the injected one;
+    a null-valued (flag) or dead entry is never injected -- it only gates.
+    """
+
+    SKILL_ID = "bio.skill"
+    INTENT = f"{SKILL_ID}:height_query"
+
+    def setUp(self):
+        from ovos_spec_tools import SpecMessage
+        self.SpecMessage = SpecMessage
+        self.bus = mock.Mock()
+        self.pipeline = PalavreadoPipeline(bus=self.bus, config={})
+        self._register(self.SKILL_ID)
+
+    def _register(self, skill_id):
+        # a keyword intent requiring a `tall_query` phrase and a `person`
+        # keyword; the utterance "how tall is he" never fills `person`.
+        data = {
+            "skill_id": skill_id,
+            "intent_name": "height_query",
+            "lang": "en-US",
+            "required": [
+                {"name": "tall_query", "samples": ["how tall is"]},
+                {"name": "person", "samples": ["bob", "alice"]},
+            ],
+            "optional": [],
+            "one_of": [],
+            "excluded": [],
+        }
+        self.pipeline.handle_register_keyword_intent(
+            Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), data,
+                    context={"skill_id": skill_id}))
+
+    def _match(self, utterance, intent_context=None):
+        from ovos_bus_client.session import Session, SessionManager
+        sess = Session("ctx-session")
+        sess.intent_context = intent_context or {}
+        msg = Message("recognizer_loop:utterance",
+                      {"utterances": [utterance], "lang": "en-US"})
+        with mock.patch.object(SessionManager, "get", return_value=sess):
+            return self.pipeline.match_low([utterance], "en-US", msg)
+
+    def test_no_context_no_match(self):
+        """Without a live `person` entry the person keyword stays unfilled."""
+        self.assertIsNone(self._match("how tall is he"))
+
+    def test_shared_context_injected_as_keyword(self):
+        """A live shared {person: Bob} fills the person keyword and slot."""
+        ctx = {"person": {"value": "Bob"}}
+        result = self._match("how tall is he", intent_context=ctx)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_type, self.INTENT)
+        self.assertEqual(result.match_data["keywords"]["person"], ["Bob"])
+
+    def test_private_owner_context_injected(self):
+        """A live private <skill_id>:person entry fills the owner's keyword."""
+        ctx = {f"{self.SKILL_ID}:person": {"value": "Bob"}}
+        result = self._match("how tall is he", intent_context=ctx)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_data["keywords"]["person"], ["Bob"])
+
+    def test_private_other_skill_not_visible(self):
+        """A private entry owned by another skill is not injected here."""
+        ctx = {"other.skill:person": {"value": "Bob"}}
+        self.assertIsNone(self._match("how tall is he", intent_context=ctx))
+
+    def test_utterance_value_wins_over_context(self):
+        """A person value in the utterance beats the injected candidate."""
+        ctx = {"person": {"value": "Alice"}}
+        result = self._match("how tall is bob", intent_context=ctx)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_data["keywords"]["person"], ["bob"])
+
+    def test_flag_entry_not_injected(self):
+        """A null-valued (flag) entry gates only -- it is never injected."""
+        ctx = {"person": {"value": None}}
+        self.assertIsNone(self._match("how tall is he", intent_context=ctx))
+
+    def test_expired_entry_not_injected(self):
+        """A dead entry (turns_remaining<=0) is not injected."""
+        ctx = {"person": {"value": "Bob", "turns_remaining": 0}}
+        self.assertIsNone(self._match("how tall is he", intent_context=ctx))
+
+
 class TestPalavreadoContext1(unittest.TestCase):
     """OVOS-CONTEXT-1 requires_context / excludes_context gating at match time."""
 
