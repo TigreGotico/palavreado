@@ -250,7 +250,9 @@ class IntentContainer:
 
     # ── matching ────────────────────────────────────────────────────────────
 
-    def calc_intents(self, query: str) -> Iterator[dict]:
+    def calc_intents(self, query: str,
+                     context_candidates: Dict[str, Dict[str, str]] = None
+                     ) -> Iterator[dict]:
         """Yield scored match results for every intent that matches *query*.
 
         Only intents with confidence > 0 are yielded.  Each result is a dict
@@ -259,6 +261,12 @@ class IntentContainer:
 
         Args:
             query: The utterance to match against all registered intents.
+            context_candidates: OVOS-CONTEXT-1 §7 pre-match injection map,
+                ``{intent_name: {keyword_name: value}}``.  A keyword the
+                utterance does not fill is filled from its candidate value
+                (a live context entry of the same name), letting an intent
+                requiring that keyword match without the utterance carrying it.
+                An utterance-matched keyword always wins over its candidate.
 
         Yields:
             Match result dicts ordered by registration, not by confidence.
@@ -322,6 +330,9 @@ class IntentContainer:
             if intent_name in excluded or not intent["required"]:
                 continue
 
+            # OVOS-CONTEXT-1 §7 candidate values for this intent's keywords.
+            injected = (context_candidates or {}).get(intent_name, {})
+
             n_req = len(intent["required"])
             n_opt = len(intent["optional"])
             partial_conf = 1.0 / n_req
@@ -362,20 +373,26 @@ class IntentContainer:
             for kw_dict, weight in ((intent["required"], partial_conf),
                                     (intent["optional"], partial_opt_conf)):
                 for kw, kw_samples in kw_dict.items():
-                    if not kw_samples:
-                        continue
-                    if query in kw_samples:
-                        matches[kw] = [query]
+                    if kw_samples and kw not in matches:
+                        if query in kw_samples:
+                            matches[kw] = [query]
+                            conf += weight
+                            remainder = ""
+                        else:
+                            kws, quality = _match(kw_samples)
+                            if kws:
+                                matches[kw] = kws
+                                conf += weight * quality
+                                remainder = get_utterance_remainder(remainder, kws)
+                                if remainder in kws:
+                                    remainder = ""
+                    # OVOS-CONTEXT-1 §7: fill an unmatched keyword from its live
+                    # context candidate.  Only when the utterance itself did not
+                    # produce it, so an utterance-matched value always wins; the
+                    # value is context-supplied and so leaves the remainder as-is.
+                    if kw not in matches and kw in injected:
+                        matches[kw] = [injected[kw]]
                         conf += weight
-                        remainder = ""
-                    else:
-                        kws, quality = _match(kw_samples)
-                        if kws:
-                            matches[kw] = kws
-                            conf += weight * quality
-                            remainder = get_utterance_remainder(remainder, kws)
-                            if remainder in kws:
-                                remainder = ""
 
             # All required slots must be present in matches.
             if not intent["required"].keys() <= matches.keys():
@@ -395,11 +412,15 @@ class IntentContainer:
                     "_rw": _rw,
                 }
 
-    def calc_intent(self, query: str) -> dict:
+    def calc_intent(self, query: str,
+                    context_candidates: Dict[str, Dict[str, str]] = None
+                    ) -> dict:
         """Return the single best-matching intent result for *query*.
 
         Args:
             query: The utterance to match.
+            context_candidates: OVOS-CONTEXT-1 §7 pre-match injection map
+                (see :meth:`calc_intents`).
 
         Returns:
             The highest-confidence match dict (keys: ``name``, ``conf``,
@@ -410,7 +431,7 @@ class IntentContainer:
         best = None
         best_conf = -1.0
         best_matched = -1
-        for result in self.calc_intents(query):
+        for result in self.calc_intents(query, context_candidates):
             c = result["conf"]
             mw = result["_mw"]
             rem = result["_rw"]

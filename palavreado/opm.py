@@ -1,5 +1,6 @@
 """OVOS pipeline plugin wrapping palavreado — keyword intent matching (adapt replacement)."""
 
+import time
 from typing import Dict, List, Optional, Union
 
 from langcodes import closest_match
@@ -13,7 +14,7 @@ from ovos_utils import flatten_list
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.lang import standardize_lang_tag
 from ovos_utils.log import LOG
-from ovos_spec_tools import SpecMessage, gate_satisfied
+from ovos_spec_tools import SpecMessage, gate_satisfied, is_live
 from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
@@ -66,6 +67,13 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         # {"requires": [...], "excludes": [...]}.  Enforced at match time via
         # ovos_spec_tools.gate_satisfied (separate/additive to excluded_keywords).
         self._context_gates: Dict[str, dict] = {}
+
+        # OVOS-CONTEXT-1 §7 injection index, keyed by internal intent name →
+        # the intent's declared keyword names (required + optional + one_of).
+        # A live context entry named for one of these keywords is injected as a
+        # candidate keyword value before matching.  Kept in step with the
+        # container's intents through the same register/detach paths.
+        self._intent_keywords: Dict[str, List[str]] = {}
 
         # ── legacy registration topics (back-compat) ──────────────────────────
         self.bus.on("register_vocab", self.handle_register_vocab)
@@ -174,6 +182,12 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         gate = self._context_gate(message.data)
         if gate is not None:
             self._context_gates[intent.name] = gate
+
+        # OVOS-CONTEXT-1 §7 — index declared keywords for candidate injection.
+        keywords = [kw for kw, _ in (intent.requires or [])]
+        keywords += [kw for kw, _ in (intent.optional or [])]
+        keywords += [kw for group in (intent.at_least_one or []) for kw in group]
+        self._intent_keywords[intent.name] = keywords
 
         self._registered_intents.append(intent.__dict__)
 
@@ -310,6 +324,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
         self._context_gates.pop(internal_name, None)
+        self._intent_keywords.pop(internal_name, None)
 
         # OVOS-CONTEXT-1: store optional context gating for this intent
         gate = self._context_gate(data)
@@ -333,6 +348,14 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             excluded_samples += self._descriptor_samples(descriptor)
         if excluded_samples:
             container.exclude_keywords(internal_name, excluded_samples)
+
+        # OVOS-CONTEXT-1 §7 — index this intent's keyword names (the bare
+        # vocabulary names) so a context entry of the same name injects a
+        # candidate for the intent's keyword.
+        keyword_names = [d["name"] for d in required]
+        keyword_names += [d["name"] for d in optional]
+        keyword_names += [d["name"] for group in one_of for d in (group or [])]
+        self._intent_keywords[internal_name] = keyword_names
 
         self._registered_intents.append({"name": internal_name,
                                          "skill_id": skill_id,
@@ -396,6 +419,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         internal_name = self._spec_intent_name(skill_id, intent_name)
         self._disabled_intents.discard(internal_name)
         self._context_gates.pop(internal_name, None)
+        self._intent_keywords.pop(internal_name, None)
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
         for container in self.containers.values():
@@ -423,6 +447,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
                                   if not n.startswith(prefix)}
         self._context_gates = {n: g for n, g in self._context_gates.items()
                                if not n.startswith(prefix)}
+        self._intent_keywords = {n: k for n, k in self._intent_keywords.items()
+                                 if not n.startswith(prefix)}
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("skill_id") != skill_id
                                     and not i.get("name", "").startswith(prefix)]
@@ -457,6 +483,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         if not intent_name:
             return
         self._context_gates.pop(intent_name, None)
+        self._intent_keywords.pop(intent_name, None)
         self._registered_intents = [i for i in self._registered_intents
                                      if i.get("name") != intent_name]
         for container in self.containers.values():
@@ -467,6 +494,8 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         skill_id = message.data.get("skill_id", "")
         self._context_gates = {n: g for n, g in self._context_gates.items()
                                if not n.startswith(skill_id)}
+        self._intent_keywords = {n: k for n, k in self._intent_keywords.items()
+                                 if not n.startswith(skill_id)}
         self._registered_intents = [i for i in self._registered_intents
                                      if not i.get("name", "").startswith(skill_id)]
         self.registered_vocab = [v for v in self.registered_vocab
@@ -546,6 +575,51 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         return gate_satisfied(intent_context, gate.get("requires"),
                               gate.get("excludes"), owner_id=owner_id)
 
+    @staticmethod
+    def _live_context_value(entries: Dict, name: str, skill_id: str,
+                            now: float) -> Optional[str]:
+        """Resolve a live non-null string context value for a keyword name.
+
+        Scope is read from the key (OVOS-CONTEXT-1 §3): the owner's private
+        entry ``<skill_id>:<name>`` is consulted first, then the shared bare
+        ``<name>``.  Flag entries (``value`` null / non-string) and dead
+        entries are ignored — those only gate, they never inject.
+        """
+        for key in (f"{skill_id}:{name}", name):
+            entry = entries.get(key)
+            if not isinstance(entry, dict):
+                continue
+            value = entry.get("value")
+            if not isinstance(value, str) or not value:
+                continue
+            if not is_live(entry, now):
+                continue
+            return value
+        return None
+
+    def _context_candidates(self, sess: Session) -> Dict[str, Dict[str, str]]:
+        """Build OVOS-CONTEXT-1 §7 pre-match candidates from ``intent_context``.
+
+        For every registered intent keyword that has a live non-null string
+        entry in ``session.intent_context`` (scope-resolved from the key using
+        the intent's ``skill_id``), emit ``{intent_name: {keyword: value}}``.
+        The matcher fills an otherwise-unmatched keyword from that value, so an
+        intent requiring the keyword matches without the utterance carrying it;
+        a value the utterance itself produces for the keyword wins over it.
+        """
+        entries = getattr(sess, "intent_context", None) or {}
+        if not entries or not self._intent_keywords:
+            return {}
+        now = time.time()
+        candidates: Dict[str, Dict[str, str]] = {}
+        for name, keywords in self._intent_keywords.items():
+            skill_id = name.split(":")[0]
+            for kw in keywords:
+                value = self._live_context_value(entries, kw, skill_id, now)
+                if value is not None:
+                    candidates.setdefault(name, {})[kw] = value
+        return candidates
+
     def _match_intent(self, utterances: tuple, lang: Optional[str] = None,
                       message: Optional[str] = None) -> Optional[IntentHandlerMatch]:
         """Match utterances against registered intents, honouring session blacklists.
@@ -572,11 +646,14 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             return None
 
         container = self.containers[lang]
+        # OVOS-CONTEXT-1 §7 pre-match candidates, scope-resolved per intent.
+        context_candidates = self._context_candidates(sess)
         best = None
         best_conf = -1.0
 
         for utt in utts:
-            result = _calc_palavreado_intent(utt, container, sess)
+            result = _calc_palavreado_intent(utt, container, sess,
+                                             context_candidates)
             if result and result["name"] in self._disabled_intents:
                 continue  # OVOS-INTENT-4 §8.5: disabled intents are not candidates
             if result and not self._context_gate_ok(result["name"], sess):
@@ -629,14 +706,19 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
 def _calc_palavreado_intent(utt: str,
                              container: IntentContainer,
-                             sess: Session) -> Optional[dict]:
+                             sess: Session,
+                             context_candidates: Optional[Dict[str, Dict[str, str]]] = None
+                             ) -> Optional[dict]:
     """Match *utt* against *container*, honouring session blacklists.
+
+    *context_candidates* carries the OVOS-CONTEXT-1 §7 pre-match injection map
+    (``{intent_name: {keyword: value}}``) forwarded to the matcher.
 
     Returns the raw result dict from :meth:`IntentContainer.calc_intent`,
     or ``None`` if nothing matched or the match is blacklisted.
     """
     try:
-        result = container.calc_intent(utt)
+        result = container.calc_intent(utt, context_candidates)
         if not result.get("name"):
             return None
         if result["name"] in (sess.blacklisted_intents or []):
