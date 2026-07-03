@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.5.0a1) (2026-07-03)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.4.0a1...1.5.0a1)
+
+**Merged pull requests:**
+
+- feat: OVOS-CONTEXT-1 §7 pre-match context injection \(keyword engine\) [\#32](https://github.com/OpenVoiceOS/palavreado/pull/32) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.4.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.4.0a1) (2026-07-02)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.3.0a1...1.4.0a1)
