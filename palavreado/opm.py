@@ -251,7 +251,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         data = message.data
         skill_id = data.get("skill_id") or message.context.get("skill_id", "")
         intent_name = data.get("intent_name", "")
-        lang = standardize_lang_tag(data.get("lang") or get_message_lang(message))
+        lang = standardize_lang(data.get("lang") or get_message_lang(message))
         topic = str(SpecMessage.INTENT_REGISTER_KEYWORD)
 
         def _reject(reason: str) -> None:
@@ -371,7 +371,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         data = message.data
         skill_id = data.get("skill_id") or message.context.get("skill_id", "")
         entity_name = data.get("entity_name", "")
-        lang = standardize_lang_tag(data.get("lang") or get_message_lang(message))
+        lang = standardize_lang(data.get("lang") or get_message_lang(message))
         topic = str(SpecMessage.ENTITY_REGISTER)
 
         samples = data.get("samples") or []
@@ -425,7 +425,6 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
     def handle_entity_deregister(self, message: Message) -> None:
         """Remove one entity value-set (OVOS-INTENT-4 §8.3)."""
         data = message.data
-        skill_id = data.get("skill_id") or message.context.get("skill_id", "")
         entity_name = data.get("entity_name", "")
         if not entity_name:
             return
