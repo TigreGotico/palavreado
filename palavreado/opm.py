@@ -118,6 +118,11 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             if intent_name.startswith(skill_id):
                 container.remove_intent(intent_name)
 
+    def _exclude_keywords(self, container: IntentContainer, name: str,
+                          samples: List[str]) -> None:
+        """Suppress *samples* as match keywords for intent *name*."""
+        container.exclude_keywords(name, samples)
+
     # ── bus event handlers ────────────────────────────────────────────────────
 
     def handle_register_vocab(self, message: Message) -> None:
@@ -339,7 +344,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
 
         # §8.1: re-registration replaces the existing intent (per language)
         container = self.containers[resolved_lang]
-        container.remove_intent(internal_name)
+        self._remove_intent(container, internal_name)
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
         self._context_gates.pop(internal_name, None)
@@ -359,14 +364,14 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             for descriptor in (group or []):
                 creator.optionally(descriptor["name"], self._descriptor_samples(descriptor))
 
-        container.add_intent(creator)
+        self._add_intent(container, internal_name, creator)
 
         # §5.4: excluded role → keyword suppression
         excluded_samples: List[str] = []
         for descriptor in excluded:
             excluded_samples += self._descriptor_samples(descriptor)
         if excluded_samples:
-            container.exclude_keywords(internal_name, excluded_samples)
+            self._exclude_keywords(container, internal_name, excluded_samples)
 
         # OVOS-CONTEXT-1 §7 — index this intent's keyword names (the bare
         # vocabulary names) so a context entry of the same name injects a
@@ -442,7 +447,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self._registered_intents = [i for i in self._registered_intents
                                     if i.get("name") != internal_name]
         for container in self.containers.values():
-            container.remove_intent(internal_name)
+            self._remove_intent(container, internal_name)
 
     def handle_entity_deregister(self, message: Message) -> None:
         """Remove one entity value-set (OVOS-INTENT-4 §8.3)."""
@@ -473,9 +478,7 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
         self.registered_vocab = [v for v in self.registered_vocab
                                  if v.get("skill_id") != skill_id]
         for container in self.containers.values():
-            for intent_name in list(container.intent_names):
-                if intent_name.startswith(prefix):
-                    container.remove_intent(intent_name)
+            self._remove_skill(container, skill_id)
 
     def handle_intent_disable(self, message: Message) -> None:
         """Suppress an intent without removing it (OVOS-INTENT-4 §8.5)."""
@@ -782,6 +785,12 @@ class HierarchicalPalavreadoPipeline(PalavreadoPipeline):
                       skill_id: str) -> None:  # type: ignore[override]
         # In domain mode the skill_id IS the domain.
         container.remove_domain(skill_id)
+
+    def _exclude_keywords(self, container: HierarchicalIntentContainer,
+                          name: str, samples: List[str]) -> None:  # type: ignore[override]
+        # The two-stage container has no per-intent keyword-exclusion surface;
+        # domain gating already narrows matches, so this is a no-op here.
+        return
 
 
 def _calc_palavreado_intent(utt: str,
