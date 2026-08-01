@@ -31,7 +31,7 @@ Per-language `IntentContainer` instances are created at startup for each languag
 `pyproject.toml:38`
 
 ```toml
-[project.entry-points."ovos.pipeline"]
+[project.entry-points."opm.pipeline"]
 palavreado = "palavreado.opm:PalavreadoPipeline"
 ```
 
@@ -262,7 +262,7 @@ If you are switching from Adapt to palavreado at the pipeline level:
 ```json
 {
   "intents": {
-    "pipeline": ["palavreado_high", "palavreado_medium", "palavreado_low", ...]
+    "pipeline": ["palavreado-high", "palavreado-medium", "palavreado-low", ...]
   }
 }
 ```
