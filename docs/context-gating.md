@@ -2,7 +2,7 @@
 
 Context gating lets you make intents conditional on named boolean flags.  An intent can be required to have certain contexts active before it fires, or suppressed whenever certain contexts are active.
 
-All context state lives inside the `IntentContainer` instance.  Contexts are per-intent — the same context name on different intents is tracked independently.
+All context state lives inside the `IntentContainer` instance.  Contexts are per-intent. The same context name on different intents is tracked independently.
 
 ---
 
@@ -27,7 +27,7 @@ container.set_context(intent_name: str, context_name: str, context_val: object =
 container.unset_context(intent_name: str, context_name: str)
 ```
 
-`context_val` is stored (`available_contexts[intent_name][context_name] = context_val`) but the matching logic only checks **presence or absence** of the key — the value is not evaluated.
+`context_val` is stored (`available_contexts[intent_name][context_name] = context_val`) but the matching logic only checks **presence or absence** of the key. The value is not evaluated.
 
 ---
 
@@ -73,7 +73,7 @@ if any(c in active for c in contexts):
 
 ## Worked examples
 
-### Example 1 — Intent that only fires in a specific mode
+### Example 1: Intent that only fires in a specific mode
 
 A `"lights_off"` intent should only be available when the lights system reports that lights are available.
 
@@ -90,7 +90,7 @@ c.add_intent(
 # Gate the intent on lights_active context
 c.require_context("lights_off", "lights_active")
 
-# Without setting the context — intent is suppressed
+# Without setting the context, intent is suppressed
 result = c.calc_intent("turn off the lights")
 print(result["name"])   # None
 
@@ -107,18 +107,18 @@ result = c.calc_intent("turn off the lights")
 print(result["name"])   # None
 ```
 
-### Example 2 — Intent suppressed when already in a state
+### Example 2: Intent suppressed when already in a state
 
 A `"lights_off"` intent should not fire if the lights are already off.
 
 ```python
 c.exclude_context("lights_off", "lights_already_off")
 
-# Lights are on — intent can fire
+# Lights are on, intent can fire
 result = c.calc_intent("turn off the lights")
 print(result["name"])   # lights_off
 
-# Lights have just been turned off — suppress the intent
+# Lights have just been turned off, suppress the intent
 c.set_context("lights_off", "lights_already_off")
 
 result = c.calc_intent("turn off the lights")
@@ -128,7 +128,7 @@ print(result["name"])   # None (suppressed by excluded context)
 c.unset_context("lights_off", "lights_already_off")
 ```
 
-### Example 3 — Multiple required contexts (all must be active)
+### Example 3: Multiple required contexts (all must be active)
 
 ```python
 c.require_context("secure_command", "authenticated")
@@ -142,7 +142,7 @@ c.set_context("secure_command", "admin_mode")
 result = c.calc_intent("run the secure command")
 ```
 
-### Example 4 — Required and excluded together
+### Example 4: Required and excluded together
 
 An intent that should fire only during a shopping session but not if the user is in checkout:
 
@@ -165,7 +165,7 @@ print(result["name"])   # None
 
 ## Interaction with `calc_intents`
 
-Context filtering happens before any keyword matching.  Excluded intents are not evaluated at all — they do not appear in `calc_intents` results and do not affect `calc_intent` tie-breaking.
+Context filtering happens before any keyword matching.  Excluded intents are not evaluated at all. They do not appear in `calc_intents` results and do not affect `calc_intent` tie-breaking.
 
 The filter result is a list of intent names to skip:
 
@@ -186,5 +186,8 @@ for intent_name, intent in self.intents.items():
 
 - Contexts are stored per intent, not globally.  Setting `"lights_active"` for `"lights_off"` has no effect on `"lights_on"`.
 - Context values (the third argument to `set_context`) are stored but have no effect on matching.  They are available to the caller via `container.available_contexts[intent_name][context_name]` if needed.
-- There is no persistence — all context state is in-memory and resets when the container is garbage-collected.
+- There is no persistence. All context state is in-memory and resets when the container is garbage-collected.
 - In the OVOS plugin (`PalavreadoPipeline`), session blacklisting is handled separately via `sess.blacklisted_intents` / `sess.blacklisted_skills` in `_calc_palavreado_intent` (`palavreado/opm.py:299`), not via this context system.
+
+---
+[← Normalisation](normalisation.md) · [Home](index.md) · [OVOS Plugin →](ovos-plugin.md)

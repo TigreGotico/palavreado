@@ -24,27 +24,42 @@ The 22 intents span common voice assistant domains:
 | Intent | Required slots | Optional slots |
 |---|---|---|
 | `play_music` | `PlayKeyword` | `MusicKeyword` |
-| `pause_music` | `StopKeyword`, `MusicKeyword` | — |
+| `pause_music` | `StopKeyword`, `MusicKeyword` | none |
 | `next_track` | `NextKeyword` | `MusicKeyword` |
-| `set_volume` | `VolumeKeyword` | — |
-| `set_timer` | `SetKeyword`, `TimerKeyword` | — |
+| `set_volume` | `VolumeKeyword` | none |
+
+| Intent | Required slots | Optional slots |
+|---|---|---|
+| `set_timer` | `SetKeyword`, `TimerKeyword` | none |
 | `set_alarm` | `AlarmKeyword` | `SetKeyword` |
-| `cancel_timer` | `CancelKeyword`, `TimerKeyword` | — |
-| `weather_query` | `WeatherKeyword` | — |
-| `lights_on` | `LightKeyword`, `OnKeyword` | — |
-| `lights_off` | `LightKeyword`, `OffKeyword` | — |
+| `cancel_timer` | `CancelKeyword`, `TimerKeyword` | none |
+| `weather_query` | `WeatherKeyword` | none |
+
+| Intent | Required slots | Optional slots |
+|---|---|---|
+| `lights_on` | `LightKeyword`, `OnKeyword` | none |
+| `lights_off` | `LightKeyword`, `OffKeyword` | none |
 | `thermostat_set` | `ThermostatKeyword` | `HeatKeyword`, `CoolKeyword` |
-| `call_contact` | `CallKeyword` | — |
-| `send_message` | `MessageKeyword` | — |
-| `add_note` | `NoteKeyword` | — |
-| `add_shopping` | `ShoppingKeyword` | — |
-| `time_query` | `TimeKeyword` | — |
-| `date_query` | `DateKeyword` | — |
-| `search_query` | `SearchKeyword` | — |
-| `navigate_to` | `NavigateKeyword` | — |
-| `help` | `HelpKeyword` | — |
-| `stop` | `StopCancelKeyword` | — |
-| `add_reminder` | `RemindKeyword` | — |
+| `call_contact` | `CallKeyword` | none |
+
+| Intent | Required slots | Optional slots |
+|---|---|---|
+| `send_message` | `MessageKeyword` | none |
+| `add_note` | `NoteKeyword` | none |
+| `add_shopping` | `ShoppingKeyword` | none |
+| `time_query` | `TimeKeyword` | none |
+
+| Intent | Required slots | Optional slots |
+|---|---|---|
+| `date_query` | `DateKeyword` | none |
+| `search_query` | `SearchKeyword` | none |
+| `navigate_to` | `NavigateKeyword` | none |
+| `help` | `HelpKeyword` | none |
+
+| Intent | Required slots | Optional slots |
+|---|---|---|
+| `stop` | `StopCancelKeyword` | none |
+| `add_reminder` | `RemindKeyword` | none |
 
 ### Utterance categories
 
@@ -52,11 +67,14 @@ Match utterances (`benchmark/dataset.py:199`):
 
 | Category | Description | Count |
 |---|---|---|
-| Short (1–3 words) | e.g. `"play"`, `"lights on"` | ~19 |
-| Medium (4–8 words) | e.g. `"skip this song"` | ~16 |
-| Long (9–14 words) | e.g. `"could you get directions to the nearest petrol station"` | ~15 |
+| Short (1 to 3 words) | e.g. `"play"`, `"lights on"` | ~19 |
+| Medium (4 to 8 words) | e.g. `"skip this song"` | ~16 |
+| Long (9 to 14 words) | e.g. `"could you get directions to the nearest petrol station"` | ~15 |
 | Very long (15+ words) | e.g. full natural requests embedded in conversational speech | ~8 |
-| Multi-intent | Two intents' keywords both present; one is labelled as correct | ~10 |
+
+| Category | Description | Count |
+|---|---|---|
+| Multi-intent | Two intents' keywords both present, one is labelled as correct | ~10 |
 | Harder cases | Keyword embedded in longer natural phrasing | ~20 |
 | Ambiguous | Correct intent requires keyword disambiguation | ~6 |
 | Standard | Direct keyword utterances | ~123 |
@@ -68,6 +86,9 @@ No-match utterances (`benchmark/dataset.py:491`):
 | Conversational / off-topic (no keyword overlap) | ~16 |
 | Single keyword present but not a command (past tense, noun use, idiom) | ~20 |
 | Multiple keywords present, still not a command | ~15 |
+
+| Category | Count |
+|---|---|
 | Rhetorical / hypothetical | ~7 |
 | Third-person / reported speech | ~4 |
 | Nonsense | ~5 |
@@ -95,11 +116,11 @@ Overall fraction of correct decisions (both correct matches and correct no-match
 
 ### Precision vs Recall trade-off
 
-palavreado has higher recall (94.0% vs 90.3%): it correctly identifies more true intent utterances.  Adapt has marginally higher precision (81.0% vs 80.6%) and fewer false positives on no-match utterances (46 vs 49).  The difference reflects palavreado's remainder penalty and multi-word quality multipliers, which allow it to match more loosely phrased utterances at the cost of occasionally firing on non-command speech.
+palavreado has higher recall (94.0% vs 90.3%): it correctly identifies more true intent utterances.  Adapt has marginally higher precision (81.0% vs 80.6%) and fewer false positives on no-match utterances (46 vs 49).  The difference reflects palavreado's remainder penalty and multi-word quality multipliers. These let it match more loosely phrased utterances, at the cost of occasionally firing on non-command speech.
 
 ### False positives
 
-Both engines share the same fundamental limitation of keyword-based matching: a vocabulary word appearing incidentally in an off-topic sentence triggers a false positive.  The high FP rate (49 for palavreado, 46 for Adapt) reflects genuine dataset hardness — past-tense, rhetorical, and third-person uses of vocabulary words are indistinguishable from commands without grammatical or pragmatic context.
+Both engines share the same fundamental limitation of keyword-based matching. A vocabulary word appearing incidentally in an off-topic sentence triggers a false positive. The high FP rate (49 for palavreado, 46 for Adapt) reflects genuine dataset hardness. Past-tense, rhetorical, and third-person uses of vocabulary words are indistinguishable from commands without grammatical or pragmatic context.
 
 ### Latency
 
@@ -111,7 +132,7 @@ Adapt is approximately 3× faster at median latency (0.20 ms vs 0.58 ms).  Both 
 
 ### Prerequisites
 
-palavreado must be installed.  Adapt is optional — if not available, the Adapt section is skipped with a `[SKIP]` message.
+palavreado must be installed. Adapt is optional. If Adapt is not available, the Adapt section is skipped with a `[SKIP]` message.
 
 ```bash
 pip install "palavreado[dev]"
@@ -137,7 +158,6 @@ uv run python benchmark/compare.py
 Dataset : 284 cases  (217 match, 67 no-match)
 Intents : 22
 Vocab   : N keyword samples across 28 entity types
-
 ==================================================================
   palavreado  (keyword, no fuzz)
 ==================================================================
@@ -148,10 +168,8 @@ Vocab   : N keyword samples across 28 entity types
   FP        : 49 / 67  (73% of no-match)
   FN        : 13 / 217  (6% of match)
   Latency   : median=0.58ms  p95=X.XXms  max=X.XXms
-
   Per-intent (issues only):
     <intent_name>          recall=XX%  fn=N  fp=N
-
   Mismatches (N):
     [expected → predicted] (conf)  "utterance"
 ```
@@ -174,9 +192,12 @@ Where `expected` is the labelled intent (`None` for no-match cases) and `predict
 
 The dataset intentionally includes hard cases that keyword parsers struggle with:
 
-1. **Incidental keyword use** — `"the timer on the oven is broken"` contains `"timer"` but is not a set-timer command.
-2. **Idioms** — `"call it a day"`, `"buy some time"`, `"next time I'll remember"`.
-3. **Past tense / reported speech** — `"she sent a text"`, `"they called an emergency meeting"`.
-4. **Multi-intent utterances** — `"stop the music and cancel my alarm"` contains keywords from two intents; the dataset labels the one that should win.
+1. **Incidental keyword use**: `"the timer on the oven is broken"` contains `"timer"` but is not a set-timer command.
+2. **Idioms**: `"call it a day"`, `"buy some time"`, `"next time I'll remember"`.
+3. **Past tense / reported speech**: `"she sent a text"`, `"they called an emergency meeting"`.
+4. **Multi-intent utterances**: `"stop the music and cancel my alarm"` contains keywords from two intents. The dataset labels the one that should win.
 
 These hard cases produce the bulk of false positives.  Any keyword parser without grammatical parsing will share this limitation.
+
+---
+[← Configuration](configuration.md) · [Home](index.md) · [Troubleshooting →](troubleshooting.md)

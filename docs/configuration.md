@@ -38,11 +38,11 @@ config = config or core_config.get("palavreado", {})
 |---|---|
 | Type | `float` |
 | Default | `0.65` |
-| Range | `0.0` – `1.0` |
+| Range | `0.0` to `1.0` |
 
-Minimum confidence required for `match_high` to return a result.  OVOS tries high-confidence pipelines first; a result here suppresses medium and low tier checks.
+Minimum confidence required for `match_high` to return a result. OVOS tries high-confidence pipelines first. A result at this tier suppresses the medium and low tier checks.
 
-Raise this value to make palavreado more conservative at the high tier (fewer false positives, but more utterances fall through to the medium tier or other pipeline stages).  Lower it to make more intents fire at the high tier.
+Raise this value to make palavreado more conservative at the high tier. Fewer false positives result, but more utterances fall through to the medium tier or other pipeline stages. Lower the value to make more intents fire at the high tier.
 
 ---
 
@@ -52,7 +52,7 @@ Raise this value to make palavreado more conservative at the high tier (fewer fa
 |---|---|
 | Type | `float` |
 | Default | `0.45` |
-| Range | `0.0` – `1.0` |
+| Range | `0.0` to `1.0` |
 
 Minimum confidence for `match_medium`.  Only evaluated if `match_high` returns `None`.
 
@@ -64,7 +64,7 @@ Minimum confidence for `match_medium`.  Only evaluated if `match_high` returns `
 |---|---|
 | Type | `float` |
 | Default | `0.25` |
-| Range | `0.0` – `1.0` |
+| Range | `0.0` to `1.0` |
 
 Minimum confidence for `match_low`.  Only evaluated if both high and medium tiers return `None`.  Setting this very low may cause spurious keyword hits to fire when a single vocabulary word appears incidentally in an unrelated utterance.
 
@@ -120,6 +120,9 @@ The primary language is always included in the language set even if not listed i
 | `conf_high` | `float` | `0.65` | `palavreado` | High-confidence match threshold |
 | `conf_med` | `float` | `0.45` | `palavreado` | Medium-confidence match threshold |
 | `conf_low` | `float` | `0.25` | `palavreado` | Low-confidence match threshold |
+
+| Key | Type | Default | Section | Description |
+|---|---|---|---|---|
 | `max_words` | `int` | `50` | `palavreado` | Maximum utterance word count |
 | `lang` | `str` | `"en-US"` | top-level | Primary language BCP-47 tag |
 | `secondary_langs` | `list[str]` | `[]` | top-level | Additional language BCP-47 tags |
@@ -130,12 +133,15 @@ The primary language is always included in the language set even if not listed i
 
 ### Reducing false positives
 
-Raise `conf_low` and `conf_med`.  At the default `conf_low` of `0.25`, an intent with a single matched required slot and no remainder penalty can score around `0.25–0.3`, which may be too permissive for some skill domains.
+Raise `conf_low` and `conf_med`. At the default `conf_low` of `0.25`, an intent with a single matched required slot and no remainder penalty can score around `0.25` to `0.3`. This may be too permissive for some skill domains.
 
 ### Improving recall for short utterances
 
-Short utterances (1–3 words) often score lower than medium utterances because there is less total vocabulary to match against and the remainder ratio is less favourable.  If short commands like `"play"` or `"timer"` are not firing, consider lowering `conf_low` or ensuring the relevant vocabulary slots have single-word entries.
+Short utterances (1 to 3 words) often score lower than medium utterances. There is less total vocabulary to match against, and the remainder ratio is less favourable. If short commands like `"play"` or `"timer"` are not firing, lower `conf_low` or check that the relevant vocabulary slots have single-word entries.
 
 ### Multi-language deployments
 
-Ensure `secondary_langs` is populated in `mycroft.conf`.  If a language is not listed, no `IntentContainer` is created for it and all utterances in that language will return `None`.  `_resolve_lang` uses BCP-47 closest-match (via `langcodes`), so `"en-GB"` will match an `"en-US"` container with a small distance penalty.
+Make sure `secondary_langs` is populated in `mycroft.conf`. If a language is not listed, no `IntentContainer` is created for it, and all utterances in that language return `None`. `_resolve_lang` uses BCP-47 closest-match (via `langcodes`). For this reason, `"en-GB"` matches an `"en-US"` container with a small distance penalty.
+
+---
+[← OVOS Pipeline Plugin](ovos-plugin.md) · [Home](index.md) · [Benchmark →](benchmark.md)

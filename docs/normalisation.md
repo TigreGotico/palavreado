@@ -1,6 +1,6 @@
 # Normalisation
 
-All text in palavreado — both training samples and inference queries — goes through a normalisation pipeline before any comparison is made.  This makes matching robust to common surface variations without requiring the caller to pre-clean strings.
+All text in palavreado, both training samples and inference queries, goes through a normalisation pipeline before any comparison is made. This lets matching tolerate common surface variations and removes the need for the caller to pre-clean strings.
 
 The normalisation code lives in `palavreado/bracket_expansion.py`.
 
@@ -14,11 +14,11 @@ The normalisation code lives in `palavreado/bracket_expansion.py`.
 | Inference (matching) | `normalize_utterance` (`bracket_expansion.py:115`) | The query string at the start of `calc_intents` |
 | Lemmatization at match time | `lemmatize` (`bracket_expansion.py:137`) | Individual tokens during `_match` and `get_utterance_remainder` |
 
-The result is that neither the caller nor the skill developer needs to worry about apostrophe styles, extra whitespace, or plural forms: they are all resolved to the same canonical representation at both ends of the comparison.
+As a result, the caller and the skill developer do not need to worry about apostrophe styles, extra whitespace, or plural forms. Palavreado resolves all of them to the same canonical form on both ends of the comparison.
 
 ---
 
-## Step 1 — Apostrophe normalisation
+## Step 1: Apostrophe normalisation
 
 `palavreado/bracket_expansion.py:85`
 
@@ -37,7 +37,7 @@ Replaces apostrophes and apostrophe-like Unicode characters with a **space** (no
 | `'` | U+2018 | LEFT SINGLE QUOTATION MARK |
 | `ʼ` | U+02BC | MODIFIER LETTER APOSTROPHE |
 | `ʹ` | U+02B9 | MODIFIER LETTER PRIME |
-| `` ` `` | U+0060 | GRAVE ACCENT (backtick) |
+| grave accent | U+0060 | GRAVE ACCENT (backtick) |
 | `´` | U+00B4 | ACUTE ACCENT |
 | `＇` | U+FF07 | FULLWIDTH APOSTROPHE |
 
@@ -52,7 +52,7 @@ Replaces apostrophes and apostrophe-like Unicode characters with a **space** (no
 
 ---
 
-## Step 2 — Whitespace collapsing
+## Step 2: Whitespace collapsing
 
 `palavreado/bracket_expansion.py:80`
 
@@ -89,7 +89,7 @@ def normalize_example(example: str) -> str:
 
 ---
 
-## Step 3 — Lemmatization
+## Step 3: Lemmatization
 
 `palavreado/bracket_expansion.py:137`
 
@@ -97,7 +97,7 @@ def normalize_example(example: str) -> str:
 def lemmatize(word: str) -> str:
 ```
 
-Produces a canonical stem of a word for matching only.  The stemmed form is **never** returned to the caller — it is used internally during token-level comparison.
+Produces a canonical stem of a word for matching only. Palavreado never returns the stemmed form to the caller. It uses the stem internally during token-level comparison.
 
 ### Algorithm
 
@@ -122,12 +122,12 @@ def lemmatize(word: str) -> str:
 | `"songs"` | `"song"` |
 | `"it's"` | `"it"` (apostrophe split → `"it"` after strip) |
 | `"class"` | `"class"` (ends in `"ss"`, not stripped) |
-| `"bus"` | `"bu"` — (3 chars, ends in `s` not `ss`, **stripped**) |
+| `"bus"` | `"bu"` (3 chars, ends in `s` not `ss`, **stripped**) |
 | `"as"` | `"as"` (2 chars, not stripped) |
 
 ### Language-agnostic design
 
-The lemmatizer intentionally uses no language model or dictionary.  The single rule (strip trailing `s`) is a reasonable heuristic for English plurals and works acceptably for many European languages.  False positive stems (e.g. `"bus"` → `"bu"`) do not cause incorrect matches because both the training sample and the query token are stemmed identically — the same stem appears on both sides of the comparison.
+The lemmatizer intentionally uses no language model or dictionary. The single rule (strip trailing `s`) works as a heuristic for English plurals and gives acceptable results for many European languages. False positive stems (for example `"bus"` to `"bu"`) do not cause incorrect matches. Both the training sample and the query token are stemmed the same way, so the same stem appears on both sides of the comparison.
 
 ---
 
@@ -173,3 +173,6 @@ Called during `expand_samples` (and therefore during `IntentCreator.require` / `
 **Implementation:** `[optional]` sections are first rewritten to `(optional|)` (empty branch = absent), then the recursive Cartesian product of all `(a|b)` groups is computed.  Internal multiple spaces left by the empty branch are collapsed.
 
 Expansion happens at registration time, not at match time.  The expanded list is what gets normalised and stored.
+
+---
+[← Confidence Scoring](confidence.md) · [Home](index.md) · [Context Gating →](context-gating.md)
