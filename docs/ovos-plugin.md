@@ -1,6 +1,6 @@
 # OVOS Pipeline Plugin
 
-palavreado ships `PalavreadoPipeline` — an OVOS pipeline plugin that replaces Adapt as the keyword intent engine.  It responds to the same message-bus events as the Adapt plugin, so existing skills require no changes.
+palavreado ships `PalavreadoPipeline`, an OVOS pipeline plugin that replaces Adapt as the keyword intent engine. It responds to the same message-bus events as the Adapt plugin, so existing skills require no changes.
 
 Source: `palavreado/opm.py`
 
@@ -78,7 +78,10 @@ Registers a keyword sample or regex entity.
 | `entity_value` | `str` | The natural-language word or phrase |
 | `entity_type` | `str` | Slot name the value belongs to |
 | `alias_of` | `str \| None` | If set, the value is registered under this entity type instead |
-| `regex` | `str \| None` | Raw regex string; if present, `entity_value` is ignored |
+
+| Field | Type | Description |
+|---|---|---|
+| `regex` | `str \| None` | Raw regex string. If present, `entity_value` is ignored |
 | `lang` | `str` | BCP-47 language tag |
 
 When `regex` is present: stored in `self._regexes[lang][entity_type]`.
@@ -91,14 +94,14 @@ Otherwise: stored in `self._vocab[lang][entity_type]`.
 Builds a palavreado `IntentCreator` from an Adapt intent envelope and registers it.
 
 The intent envelope (created by `ovos_workshop.intents.open_intent_envelope`) carries:
-- `requires` — list of `(entity_type, entity_alias)` tuples for required slots
-- `optional` — list of `(entity_type, entity_alias)` tuples for optional slots
-- `at_least_one` — list of groups; each group is a list of entity types, at least one of which must match
+- `requires`: list of `(entity_type, entity_alias)` tuples for required slots
+- `optional`: list of `(entity_type, entity_alias)` tuples for optional slots
+- `at_least_one`: list of groups. Each group is a list of entity types, and at least one of them must match
 
 **Mapping to palavreado:**
 - `requires` → `creator.require(kw_type, vocab_samples)` + `creator.require_regex` if regexes exist
 - `optional` → `creator.optionally(kw_type, vocab_samples)` + `creator.optional_regex` if regexes exist
-- `at_least_one` → each group member added as optional (best-effort; exact group semantics are not enforced)
+- `at_least_one`: each group member is added as optional (best-effort). Exact group semantics are not enforced
 
 If the intent name is already registered (e.g. on skill reload), the `RuntimeError` from `add_intent` is caught and the registration is silently skipped.
 
@@ -176,7 +179,6 @@ _match_intent(
 ) -> IntentHandlerMatch | None
 ```
 
-Steps:
 1. Deserialise the message and look up the session via `SessionManager.get`.
 2. Filter out utterances longer than `max_words`.
 3. Resolve the language via `_resolve_lang` (BCP-47 closest-match with `langcodes`).
@@ -233,10 +235,13 @@ Both engines are keyword-based parsers.  They process the same `register_vocab` 
 | `at_least_one` groups | Partial (treated as optional) | Full |
 | Contiguous multi-word match | Yes (quality 1.0) | Yes |
 | Non-contiguous multi-word match | Yes (quality 0.8) | Yes |
+
+| Feature | palavreado | Adapt |
+|---|---|---|
 | Plural/apostrophe normalisation | Yes (lemmatizer) | Partial |
 | Remainder penalty | Yes | No |
 | Coverage/slot bonuses | Yes | No |
-| Confidence range | 0.0 – 1.0 | 0.0 – 1.0 |
+| Confidence range | 0.0 to 1.0 | 0.0 to 1.0 |
 | Median match latency | ~0.58 ms | ~0.20 ms |
 | Accuracy (benchmark) | 81.7% | 80.3% |
 | Recall (benchmark) | 94.0% | 90.3% |
@@ -273,3 +278,6 @@ The `at_least_one` group semantics are not fully equivalent: palavreado treats e
 `palavreado/opm.py:289`
 
 Removes all bus event handlers registered in `__init__`.  Called automatically by the OVOS plugin lifecycle.
+
+---
+[← Context Gating](context-gating.md) · [Home](index.md) · [Configuration →](configuration.md)

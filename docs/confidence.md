@@ -8,12 +8,12 @@ This document explains how palavreado computes confidence scores.  All relevant 
 
 Confidence is a float in `[0.0, 1.0]`, rounded to 4 decimal places.  It is computed in two phases:
 
-1. **Raw slot accumulation** — confidence is built up as each required or optional slot matches.
-2. **Final adjustment** — three corrections (remainder penalty, coverage bonus, slot bonus) are applied, then the result is clamped and rounded.
+1. **Raw slot accumulation**: confidence is built up as each required or optional slot matches.
+2. **Final adjustment**: three corrections (remainder penalty, coverage bonus, slot bonus) are applied, then the result is clamped and rounded.
 
 ---
 
-## Phase 1 — Raw slot accumulation
+## Phase 1: Raw slot accumulation
 
 `palavreado/__init__.py:321`
 
@@ -47,7 +47,7 @@ When an optional slot matches with quality `q`:
 conf += partial_opt_conf * q
 ```
 
-Optional slots cannot alone make an intent fire — they are only evaluated after the required-slot check passes.
+Optional slots cannot alone make an intent fire. They are only evaluated after the required-slot check passes.
 
 ### Quality multipliers
 
@@ -80,7 +80,7 @@ The factor `0.9` (rather than `1.0`) reflects that regex matches are less discri
 
 ---
 
-## Phase 2 — Final adjustment
+## Phase 2: Final adjustment
 
 `palavreado/__init__.py:26`
 
@@ -169,7 +169,7 @@ A perfect score of `1.0` is achievable when:
 - No words remain in the utterance remainder.
 - Optional slots also match (pushing toward and possibly slightly above `1.0`, which is then clamped).
 
-**Example:** `"lights off"` against an intent requiring `light` and `off` — both slots match, zero remainder.
+**Example:** `"lights off"` against an intent requiring `light` and `off`. Both slots match, with zero remainder.
 
 ---
 
@@ -213,3 +213,6 @@ When used as a pipeline plugin, `PalavreadoPipeline` maps confidence values to t
 | Low | `conf >= 0.25` | `conf_low` |
 
 See [Configuration](configuration.md) for how to tune these.
+
+---
+[← Intent API](intent-api.md) · [Home](index.md) · [Normalisation →](normalisation.md)

@@ -497,3 +497,6 @@ pattern2regex("buy {item}")
 ```
 
 Uses `simplematch.Matcher` internally.
+
+---
+[← Quick Start](quickstart.md) · [Home](index.md) · [Confidence Scoring →](confidence.md)

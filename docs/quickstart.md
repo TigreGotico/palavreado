@@ -73,7 +73,7 @@ IntentCreator("lights_on") \
 
 ---
 
-## 5. Autoregex — entity extraction via simplematch patterns
+## 5. Autoregex: entity extraction via simplematch patterns
 
 simplematch `{entity}` patterns are compiled to regular expressions automatically.  Matched capture groups are returned as slot values.
 
@@ -152,3 +152,6 @@ container.add_intent(new_intent)
 | `keywords` | `dict[str, list[str]]` | Matched values keyed by slot name |
 | `utterance` | `str` | Normalised query |
 | `utterance_remainder` | `str` | Portion of the utterance not consumed by any slot |
+
+---
+[← Installation](installation.md) · [Home](index.md) · [Intent API →](intent-api.md)

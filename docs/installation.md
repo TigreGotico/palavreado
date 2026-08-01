@@ -15,7 +15,7 @@
 pip install palavreado
 ```
 
-This installs the core library only (`IntentContainer`, `IntentCreator`, normalisation utilities).  The OVOS pipeline plugin and its bus-client dependencies are **not** installed.
+This installs the core library only (`IntentContainer`, `IntentCreator`, normalisation utilities). It does not install the OVOS pipeline plugin or its bus-client dependencies.
 
 ---
 
@@ -32,6 +32,9 @@ Pulls in the extra dependencies required by `PalavreadoPipeline`:
 | `ovos-bus-client` | Message-bus client and `Message` type |
 | `ovos-config` | Reads `mycroft.conf` / `ovos.conf` |
 | `ovos-plugin-manager` | `ConfidenceMatcherPipeline` base class |
+
+| Package | Purpose |
+|---|---|
 | `ovos-utils` | `FakeBus`, `flatten_list`, logging |
 | `langcodes` | BCP-47 language tag resolution |
 
@@ -82,3 +85,6 @@ Installed automatically with `pip install palavreado`:
 |---|---|
 | `simplematch` | Pattern-to-regex conversion for autoregex slots (`palavreado/builder.py:14`) |
 | `quebra_frases` | Tokenisation and chunk matching (`palavreado/__init__.py:14`) |
+
+---
+[Home](index.md) · [Quick Start →](quickstart.md)
