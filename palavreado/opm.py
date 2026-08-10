@@ -13,7 +13,7 @@ from ovos_spec_tools import closest_lang, standardize_lang
 from ovos_utils import flatten_list
 from ovos_utils.fakebus import FakeBus
 from ovos_utils.log import LOG
-from ovos_spec_tools import SpecMessage, gate_satisfied, is_live
+from ovos_spec_tools import closest_lang, SpecMessage, gate_satisfied, is_live
 from ovos_workshop.intents import open_intent_envelope
 
 from palavreado import IntentContainer
@@ -702,7 +702,16 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
     def _resolve_lang(self, lang: str) -> Optional[str]:
         if not self.containers:
             return None
-        return closest_lang(standardize_lang(lang), list(self.containers.keys()))
+        # ovos_spec_tools.language.closest_lang treats max_distance as an
+        # EXCLUSIVE upper bound ("resolves only if its distance is below
+        # max_distance" - see the closest_lang docstring). Macrolanguage
+        # members sit at tag_distance == 10 from their macrolanguage (e.g.
+        # tag_distance('arz', 'ar') == 10, langcodes' macrolanguage distance),
+        # which is exactly DEFAULT_MAX_LANGUAGE_DISTANCE. Passing the default
+        # bound excludes those matches, so pass an explicit inclusive bound
+        # (default + 1) to admit exact macrolanguage-distance matches.
+        return closest_lang(standardize_lang(lang),
+                            list(self.containers.keys()), max_distance=11)
 
     def shutdown(self) -> None:
         self.bus.remove("register_vocab", self.handle_register_vocab)
