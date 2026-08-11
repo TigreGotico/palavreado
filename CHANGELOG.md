@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0a3](https://github.com/OpenVoiceOS/palavreado/tree/1.5.0a3) (2026-08-11)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.5.0a2...1.5.0a3)
+
+**Merged pull requests:**
+
+- docs: cross-link the technical manual [\#36](https://github.com/OpenVoiceOS/palavreado/pull/36) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.5.0a2](https://github.com/OpenVoiceOS/palavreado/tree/1.5.0a2) (2026-08-01)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.5.0a1...1.5.0a2)
