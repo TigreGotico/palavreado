@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.0a1) (2026-08-11)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.6.0a1...1.7.0a1)
+
+**Merged pull requests:**
+
+- feat: add HierarchicalIntentContainer for two-stage intent matching [\#23](https://github.com/OpenVoiceOS/palavreado/pull/23) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.6.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.6.0a1) (2026-08-11)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.5.0a3...1.6.0a1)
