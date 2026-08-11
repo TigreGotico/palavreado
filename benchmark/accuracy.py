@@ -64,15 +64,19 @@ def run():
     for utt, expected, predicted, conf in results:
         if expected is not None:
             if predicted == expected:
-                tp += 1; per_tp[expected] += 1
+                tp += 1
+                per_tp[expected] += 1
             else:
-                fn += 1; per_fn[expected] += 1
+                fn += 1
+                per_fn[expected] += 1
                 if predicted is not None:
-                    fp += 1; per_fp[predicted] += 1
+                    fp += 1
+                    per_fp[predicted] += 1
                 wrong.append((utt, expected, predicted, conf))
         else:
             if predicted is not None:
-                fp += 1; per_fp[predicted] += 1
+                fp += 1
+                per_fp[predicted] += 1
                 wrong.append((utt, expected, predicted, conf))
             else:
                 tn += 1
@@ -85,7 +89,7 @@ def run():
 
     lat_s = sorted(latencies)
     print(f"\n{'='*60}")
-    print(f"  Accuracy benchmark  —  palavreado")
+    print("  Accuracy benchmark  —  palavreado")
     print(f"{'='*60}")
     print(f"  Total cases     : {total}  ({match_n} match, {nomatch_n} no-match)")
     print(f"  Correct         : {tp+tn}/{total}  ({accuracy:.1%})")
@@ -102,7 +106,9 @@ def run():
     print(f"\n  {'Intent':<24} {'TP':>4} {'FN':>4} {'Recall':>8}  {'FP':>4}")
     print(f"  {'-'*50}")
     for name in sorted(INTENTS):
-        tp_ = per_tp[name]; fn_ = per_fn[name]; fp_ = per_fp[name]
+        tp_ = per_tp[name]
+        fn_ = per_fn[name]
+        fp_ = per_fp[name]
         rec = tp_ / (tp_ + fn_) if (tp_ + fn_) else 0.0
         flag = " !" if rec < 1.0 or fp_ > 0 else ""
         print(f"  {name:<24} {tp_:>4} {fn_:>4} {rec:>7.0%}  {fp_:>4}{flag}")

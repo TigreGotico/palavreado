@@ -35,20 +35,26 @@ def compute_metrics(results, cases):
     match_n   = sum(1 for _, e in cases if e is not None)
     nomatch_n = total - match_n
     tp = fp = fn = tn = 0
-    per_tp = defaultdict(int); per_fn = defaultdict(int); per_fp = defaultdict(int)
+    per_tp = defaultdict(int)
+    per_fn = defaultdict(int)
+    per_fp = defaultdict(int)
     wrong = []
     for (predicted, conf), (utt, expected) in zip(results, cases):
         if expected is not None:
             if predicted == expected:
-                tp += 1; per_tp[expected] += 1
+                tp += 1
+                per_tp[expected] += 1
             else:
-                fn += 1; per_fn[expected] += 1
+                fn += 1
+                per_fn[expected] += 1
                 if predicted is not None:
-                    fp += 1; per_fp[predicted] += 1
+                    fp += 1
+                    per_fp[predicted] += 1
                 wrong.append((utt, expected, predicted, conf))
         else:
             if predicted is not None:
-                fp += 1; per_fp[predicted] += 1
+                fp += 1
+                per_fp[predicted] += 1
                 wrong.append((utt, expected, predicted, conf))
             else:
                 tn += 1
@@ -80,7 +86,7 @@ def print_report(label, m, latencies):
 
     issues = sorted(set(m["per_fn"]) | set(m["per_fp"]))
     if issues:
-        print(f"\n  Per-intent (issues only):")
+        print("\n  Per-intent (issues only):")
         for name in sorted(INTENTS):
             fn = m["per_fn"].get(name, 0)
             fp = m["per_fp"].get(name, 0)
@@ -182,7 +188,7 @@ def summary(rows):
         print(f"  {label:<32} {m['accuracy']:>5.1%} {m['precision']:>5.1%} "
               f"{m['recall']:>6.1%} {m['f1']:>5.3f}  {tn_frac:>8}  {m['fp']:>4}  {median_lat:>6.2f}ms")
     print(f"{'─'*90}")
-    print(f"  TN/NM = true negatives / total no-match cases (correctly returned nothing)")
+    print("  TN/NM = true negatives / total no-match cases (correctly returned nothing)")
 
 
 # ── main ───────────────────────────────────────────────────────────────────
@@ -193,7 +199,7 @@ if __name__ == "__main__":
     print(f"\nDataset : {len(cases)} cases  ({match_n} match, {len(cases)-match_n} no-match)")
     print(f"Intents : {len(INTENTS)}")
     print(f"Vocab   : {sum(len(v) for v in VOCAB.values())} keyword samples across {len(VOCAB)} entity types")
-    print(f"Note    : keyword parsers require the vocabulary word to appear in the utterance.")
+    print("Note    : keyword parsers require the vocabulary word to appear in the utterance.")
 
     rows = []
 

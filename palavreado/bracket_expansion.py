@@ -9,53 +9,36 @@ Also provides :func:`normalize_utterance`, :func:`normalize_example`, and
 :func:`lemmatize` so that training data and queries match robustly across
 apostrophe and plural variants.
 """
-import itertools
 import re
+import warnings
 from typing import List
 
+from ovos_spec_tools import expand
+from ovos_utils.log import deprecated
 
+from palavreado.version import VERSION_MAJOR
+
+_REMOVAL = f"{VERSION_MAJOR + 1}.0.0"
+
+
+@deprecated(
+    "palavreado.bracket_expansion.expand_parentheses is deprecated; "
+    "use ovos_spec_tools.expand instead.",
+    _REMOVAL,
+)
 def expand_parentheses(sent: str) -> List[str]:
-    """Expand a template string with ``(a|b)`` alternatives and ``[optional]`` syntax
-    into all possible combinations.
+    """Deprecated shim — delegates to :func:`ovos_spec_tools.expand`.
 
-    Args:
-        sent: A pattern string containing ``(a|b)`` alternations and/or
-            ``[optional]`` sections.
-
-    Returns:
-        A flat list of all expanded sentence strings, sorted for determinism.
-
-    Examples:
-        >>> expand_parentheses("Will it (rain|pour) [today]?")
-        ["Will it pour?", "Will it pour today?", "Will it rain?", "Will it rain today?"]
+    Kept for backwards compatibility. New code should import ``expand``
+    from ``ovos_spec_tools`` directly.
     """
-    def _expand_optional(text):
-        return re.sub(r"\[([^\[\]]+)\]", lambda m: f"({m.group(1)}|)", text)
-
-    def _expand_alternatives(text):
-        parts = []
-        for segment in re.split(r"(\([^\(\)]+\))", text):
-            if segment.startswith("(") and segment.endswith(")"):
-                parts.append(segment[1:-1].split("|"))
-            else:
-                parts.append([segment])
-        return itertools.product(*parts)
-
-    def _fully_expand(texts):
-        result = set(texts)
-        while True:
-            expanded = set()
-            for text in result:
-                for combo in _expand_alternatives(text):
-                    # collapse internal whitespace so the empty branch of
-                    # [optional] doesn't leave a double space
-                    expanded.add(re.sub(r' +', ' ', "".join(combo)).strip())
-            if expanded == result:
-                break
-            result = expanded
-        return sorted(result)
-
-    return _fully_expand([_expand_optional(sent)])
+    warnings.warn(
+        "palavreado.bracket_expansion.expand_parentheses is deprecated; "
+        "use ovos_spec_tools.expand instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return sorted(expand(sent))
 
 
 def clean_braces(example: str) -> str:
