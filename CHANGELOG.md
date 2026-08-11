@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.6.0a1) (2026-08-11)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.5.0a3...1.6.0a1)
+
+**Merged pull requests:**
+
+- feat: migrate to ovos-spec-tools [\#25](https://github.com/OpenVoiceOS/palavreado/pull/25) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.5.0a3](https://github.com/OpenVoiceOS/palavreado/tree/1.5.0a3) (2026-08-11)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.5.0a2...1.5.0a3)
