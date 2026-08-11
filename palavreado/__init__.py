@@ -466,3 +466,7 @@ class IntentContainer:
         best.pop("_mw", None)
         best.pop("_rw", None)
         return best
+
+
+# Re-export HierarchicalIntentContainer at the package root.
+from palavreado.hierarchical import HierarchicalIntentContainer  # noqa: E402, F401
