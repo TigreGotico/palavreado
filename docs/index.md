@@ -64,7 +64,7 @@ The library ships two things:
 | [Normalisation](normalisation.md) | Developers | Apostrophe handling, whitespace, lemmatizer |
 | [Context Gating](context-gating.md) | Developers | `require_context` / `exclude_context` system |
 | [OVOS Plugin](ovos-plugin.md) | Integrators | Pipeline plugin, bus events, mycroft.conf |
-| [Domain Pipeline](domain-pipeline.md) | Integrators | Hierarchical two-level routing via `DomainIntentContainer` |
+| [Hierarchical Pipeline](hierarchical-pipeline.md) | Integrators | Hierarchical two-level routing via `HierarchicalIntentContainer` |
 | [Configuration](configuration.md) | Integrators | All config keys for the OVOS plugin |
 
 | Document | Audience | Summary |
