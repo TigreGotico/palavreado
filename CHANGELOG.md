@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.1a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.1a1) (2026-08-11)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.0a1...1.7.1a1)
+
+**Merged pull requests:**
+
+- fix: resolve the container language through ovos-spec-tools [\#37](https://github.com/OpenVoiceOS/palavreado/pull/37) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.7.0a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.0a1) (2026-08-11)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.6.0a1...1.7.0a1)
