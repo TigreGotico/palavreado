@@ -105,13 +105,14 @@ class TestLegacyStillConsumed(_Intent4PalavreadoHarness):
         from ovoscope import register_adapt_intent, register_adapt_vocab
         from ovos_workshop.intents import IntentBuilder
 
-        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:TurnOff", ["off"])
-        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:Light", ["lights"])
+        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:TurnOff", ["off"], skill_id=self.SKILL_ID)
+        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:Light", ["lights"], skill_id=self.SKILL_ID)
         register_adapt_intent(
             self.bus,
             IntentBuilder(f"{self.SKILL_ID}:lights_off")
             .require(f"{self.SKILL_ID}:TurnOff")
             .require(f"{self.SKILL_ID}:Light"),
+            skill_id=self.SKILL_ID,
         )
         time.sleep(0.4)
         msg = self.send_and_capture(

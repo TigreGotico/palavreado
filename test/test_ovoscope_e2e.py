@@ -38,10 +38,10 @@ class _PalavreadoHarness(E2EPipelineHarness):
     pipeline: PalavreadoPipeline  # type: ignore[assignment]
 
     def _vocab(self, name, words):
-        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:{name}", words)
+        register_adapt_vocab(self.bus, f"{self.SKILL_ID}:{name}", words, skill_id=self.SKILL_ID)
 
     def _intent(self, builder):
-        register_adapt_intent(self.bus, builder)
+        register_adapt_intent(self.bus, builder, skill_id=self.SKILL_ID)
 
 
 class TestRegisteredIntentMatch(_PalavreadoHarness):
@@ -156,7 +156,7 @@ class TestDetach(_PalavreadoHarness):
         )
         self.assertIsNotNone(msg)
 
-        detach_intent(self.bus, f"{self.SKILL_ID}:lights_off")
+        detach_intent(self.bus, f"{self.SKILL_ID}:lights_off", skill_id=self.SKILL_ID)
         self.expect_no_match("turn off the lights")
 
     def test_detach_skill_removes_all_its_intents(self):
@@ -174,13 +174,14 @@ class TestDetach(_PalavreadoHarness):
             .require(f"{self.SKILL_ID}:Light")
         )
         # Second skill that should survive the detach
-        register_adapt_vocab(self.bus, "skill_b_palavreado:Play", ["play"])
-        register_adapt_vocab(self.bus, "skill_b_palavreado:Music", ["music"])
+        register_adapt_vocab(self.bus, "skill_b_palavreado:Play", ["play"], skill_id="skill_b_palavreado")
+        register_adapt_vocab(self.bus, "skill_b_palavreado:Music", ["music"], skill_id="skill_b_palavreado")
         register_adapt_intent(
             self.bus,
             IntentBuilder("skill_b_palavreado:play_music")
             .require("skill_b_palavreado:Play")
             .require("skill_b_palavreado:Music"),
+            skill_id="skill_b_palavreado",
         )
 
         detach_skill(self.bus, self.SKILL_ID)
