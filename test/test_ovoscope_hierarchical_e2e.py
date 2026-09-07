@@ -40,10 +40,11 @@ class _HierarchicalHarness(E2EPipelineHarness):
     pipeline: HierarchicalPalavreadoPipeline  # type: ignore[assignment]
 
     def _vocab(self, skill_id, name, words):
-        register_adapt_vocab(self.bus, f"{skill_id}:{name}", words)
+        register_adapt_vocab(self.bus, f"{skill_id}:{name}", words, skill_id=skill_id)
 
     def _intent(self, builder):
-        register_adapt_intent(self.bus, builder)
+        skill_id = builder.name.split(":", 1)[0]
+        register_adapt_intent(self.bus, builder, skill_id=skill_id)
 
 
 class TestDomainRouting(_HierarchicalHarness):
