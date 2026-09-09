@@ -241,15 +241,20 @@ class TestPalavreadoIntent4(unittest.TestCase):
         result = self.pipeline.match_low(["what is the brightness"], "en-US", msg)
         self.assertIsNone(result)
 
-    def test_missing_role_key_rejected(self):
+    def test_absent_role_keys_are_empty_lists(self):
+        # §5.2: an absent list-valued key is equivalent to an empty list, and
+        # a consumer must not treat the payload as malformed for omitting one.
         msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
-            "skill_id": "skill.x", "intent_name": "bad", "lang": "en-US",
-            "required": [{"name": "kw", "samples": ["foo"]}],
-            # missing optional / one_of / excluded
+            "skill_id": "skill.x", "intent_name": "minimal", "lang": "en-US",
+            "required": [{"name": "kw", "samples": ["open the door"]}],
         })
         self.pipeline.handle_register_keyword_intent(msg)
         names = [i["name"] for i in self.pipeline._registered_intents]
-        self.assertNotIn("skill.x:bad", names)
+        self.assertIn("skill.x:minimal", names)
+        result = self.pipeline.match_low(["open the door"], "en-US",
+                                          Message("recognizer_loop:utterance"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.match_type, "skill.x:minimal")
 
     def test_required_and_one_of_empty_rejected(self):
         msg = Message(str(self.SpecMessage.INTENT_REGISTER_KEYWORD), {
