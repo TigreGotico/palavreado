@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.2a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.2a1) (2026-09-09)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.1a1...1.7.2a1)
+
+**Merged pull requests:**
+
+- fix: pass required skill\_id to ovoscope adapt helpers in hierarchical e2e test [\#43](https://github.com/OpenVoiceOS/palavreado/pull/43) ([JarbasAl](https://github.com/JarbasAl))
+- fix: pass required skill\_id to ovoscope e2e helpers [\#42](https://github.com/OpenVoiceOS/palavreado/pull/42) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.7.1a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.1a1) (2026-08-11)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.0a1...1.7.1a1)
