@@ -290,12 +290,6 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             _reject("missing skill_id or intent_name")
             return
 
-        # §5.3 / §5.2: all four role keys MUST be present
-        for key in ("required", "optional", "one_of", "excluded"):
-            if key not in data:
-                _reject(f"missing required key '{key}'")
-                return
-
         resolved_lang = self._resolve_lang(lang)
         if resolved_lang is None:
             _reject(f"no container for lang {lang!r}")
