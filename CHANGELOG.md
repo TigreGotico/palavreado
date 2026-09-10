@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.5a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.5a1) (2026-09-10)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.4a1...1.7.5a1)
+
+**Merged pull requests:**
+
+- fix: an absent vocabulary role key is an empty list [\#44](https://github.com/OpenVoiceOS/palavreado/pull/44) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [1.7.4a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.4a1) (2026-09-10)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.3a1...1.7.4a1)
