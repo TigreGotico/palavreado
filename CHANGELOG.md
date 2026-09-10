@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.4a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.4a1) (2026-09-10)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.3a1...1.7.4a1)
+
+**Merged pull requests:**
+
+- fix: an entity re-registration replaces its value set [\#49](https://github.com/OpenVoiceOS/palavreado/pull/49) ([openvoiceos-bot](https://github.com/openvoiceos-bot))
+
+## [1.7.3a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.3a1) (2026-09-09)
+
+[Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.2a1...1.7.3a1)
+
 ## [1.7.2a1](https://github.com/OpenVoiceOS/palavreado/tree/1.7.2a1) (2026-09-09)
 
 [Full Changelog](https://github.com/OpenVoiceOS/palavreado/compare/1.7.1a1...1.7.2a1)
