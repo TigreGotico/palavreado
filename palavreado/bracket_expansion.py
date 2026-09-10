@@ -1,187 +1,130 @@
-class TreeFragment:
-    """(Abstract) empty sentence fragment"""
+"""
+Bracket/parenthesis expansion and text normalisation for palavreado.
 
-    def __init__(self, tree):
-        """
-        Construct a sentence tree fragment which is merely a wrapper for
-        a list of Strings
+Converts patterns like ``"(hello|hi) world"`` into a list of all possible
+expansions: ``["hello world", "hi world"]``.  Square brackets denote optional
+sections: ``"hey [world]"`` → ``["hey world", "hey"]``.
 
-        Args:
-            tree (?): Base tree for the sentence fragment, type depends on
-                        subclass, refer to those subclasses
-        """
-        self._tree = tree
+Also provides :func:`normalize_utterance`, :func:`normalize_example`, and
+:func:`lemmatize` so that training data and queries match robustly across
+apostrophe and plural variants.
+"""
+import re
+import warnings
+from typing import List
 
-    def tree(self):
-        """Return the represented sentence tree as raw data."""
-        return self._tree
+from ovos_spec_tools import expand
+from ovos_utils.log import deprecated
 
-    def expand(self):
-        """
-        Expanded version of the fragment. In this case an empty sentence.
+from palavreado.version import VERSION_MAJOR
 
-        Returns:
-            List<List<str>>: A list with an empty sentence (= token/string list)
-        """
-        return [[]]
-
-    def __str__(self):
-        return self._tree.__str__()
-
-    def __repr__(self):
-        return self._tree.__repr__()
+_REMOVAL = f"{VERSION_MAJOR + 1}.0.0"
 
 
-class Word(TreeFragment):
+@deprecated(
+    "palavreado.bracket_expansion.expand_parentheses is deprecated; "
+    "use ovos_spec_tools.expand instead.",
+    _REMOVAL,
+)
+def expand_parentheses(sent: str) -> List[str]:
+    """Deprecated shim — delegates to :func:`ovos_spec_tools.expand`.
+
+    Kept for backwards compatibility. New code should import ``expand``
+    from ``ovos_spec_tools`` directly.
     """
-    Single word in the sentence tree.
+    warnings.warn(
+        "palavreado.bracket_expansion.expand_parentheses is deprecated; "
+        "use ovos_spec_tools.expand instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return sorted(expand(sent))
 
-    Construct with a string as argument.
+
+def clean_braces(example: str) -> str:
+    """Normalize ``{{entity}}`` double braces to ``{entity}``."""
+    clean = example.replace('{{', '{').replace('}}', '}')
+    return clean
+
+
+def translate_padatious(example: str) -> str:
+    """Translate Padatious ``:0`` wildcard syntax to ``{word0:word}`` placeholder form."""
+    if ':0' not in example:
+        return example
+    tokens = example.split()
+    i = 0
+    for idx, token in enumerate(tokens):
+        if token == ":0":
+            tokens[idx] = '{' + f'word{i}:word' + '}'
+            i += 1
+    return " ".join(tokens)
+
+
+def normalize_whitespace(text: str) -> str:
+    """Collapse multiple consecutive whitespace characters into a single space and strip."""
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def drop_apostrophes(text: str) -> str:
+    """Replace apostrophes and common apostrophe-like unicode variants with a space.
+
+    Using a space rather than empty string preserves word boundaries so that
+    ``"it's"`` → ``"it s"`` and both sides of a match reduce the same way.
     """
+    apostrophe_variants = [
+        "'",           # U+0027 ASCII apostrophe
+        "’",      # U+2019 RIGHT SINGLE QUOTATION MARK
+        "‘",      # U+2018 LEFT SINGLE QUOTATION MARK
+        "ʼ",      # U+02BC MODIFIER LETTER APOSTROPHE
+        "ʹ",      # U+02B9 MODIFIER LETTER PRIME
+        "`",           # U+0060 GRAVE ACCENT (backtick)
+        "´",      # U+00B4 ACUTE ACCENT
+        "＇",      # U+FF07 FULLWIDTH APOSTROPHE
+    ]
+    for variant in apostrophe_variants:
+        text = text.replace(variant, " ")
+    return text
 
-    def expand(self):
-        """
-        Creates one sentence that contains exactly that word.
 
-        Returns:
-            List<List<str>>: A list with the given string as sentence
-                                (= token/string list)
-        """
-        return [[self._tree]]
-
-
-class Sentence(TreeFragment):
+def _space_entities(text: str) -> str:
     """
-    A Sentence made of several concatenations/words.
-
-    Construct with a List<TreeFragment> as argument.
+    Ensure a space exists on both sides of every {entity} placeholder.
+    Handles agglutinative suffixes like {keyword}ren so the suffix becomes
+    a separate token and the capture group is not contaminated.
     """
-
-    def expand(self):
-        """
-        Creates a combination of all sub-sentences.
-
-        Returns:
-            List<List<str>>: A list with all subsentence expansions combined in
-                                every possible way
-        """
-        old_expanded = [[]]
-        for sub in self._tree:
-            sub_expanded = sub.expand()
-            new_expanded = []
-            while len(old_expanded) > 0:
-                sentence = old_expanded.pop()
-                for new in sub_expanded:
-                    new_expanded.append(sentence + new)
-            old_expanded = new_expanded
-        return old_expanded
+    return re.sub(r'(\{[^}]+\})', r' \1 ', text)
 
 
-class SentenceTree(TreeFragment):
+def normalize_utterance(text: str) -> str:
+    """Normalize a plain utterance (inference query) for consistent matching.
+
+    Does NOT touch entity placeholder syntax.
     """
-    A Combination of possible sub-sentences.
+    text = drop_apostrophes(text)
+    text = normalize_whitespace(text)
+    return text
 
-    Construct with List<TreeFragment> as argument.
+
+def normalize_example(example: str) -> str:
+    text = clean_braces(translate_padatious(example))
+    text = drop_apostrophes(text)
+    text = normalize_whitespace(text)
+    return text
+
+
+# ── lightweight lemmatizer ───────────────────────────────────────────────────
+
+_APOS_RE = re.compile(r"[\u0027\u2019\u2018\u02BC\u02B9\u0060\u00B4\uFF07]")
+
+
+def lemmatize(word: str) -> str:
+    """Canonical stem of *word* for matching only — never used in output.
+
+    Language-agnostic: strips apostrophes (replaced with space) and removes a
+    trailing ``"s"`` (not ``"ss"``) so plural/singular variants match.
+    ``"lights"`` → ``"light"``;  ``"what s"`` tokens → ``"what"`` + ``""``.
     """
-
-    def expand(self):
-        """
-        Returns all of its options as seperated sub-sentences.
-
-        Returns:
-            List<List<str>>: A list containing the sentences created by all
-                                expansions of its sub-sentences
-        """
-        options = []
-        for option in self._tree:
-            options.extend(option.expand())
-        return options
-
-
-class SentenceTreeParser:
-    """
-    Generate sentence token trees from a list of sentence
-    ['1', '(', '2', '|', '3, ')'] -> [['1', '2'], ['1', '3']]
-    """
-
-    def __init__(self, sentence):
-        # the syntax for .optionally is square brackets
-        # "hello [world]"
-        # this is equivalent to using .one_of
-        # "hello (world|)
-        sentence = sentence.replace("[", "(").replace("]", "|)")
-        self.sentence = sentence
-
-    def _parse(self):
-        """
-        Generate sentence token trees
-        ['1', '(', '2', '|', '3, ')'] -> ['1', ['2', '3']]
-        """
-        self._current_position = 0
-        return self._parse_expr()
-
-    def _parse_expr(self):
-        """
-        Generate sentence token trees from the current position to
-        the next closing parentheses / end of the list and return it
-        ['1', '(', '2', '|', '3, ')'] -> ['1', [['2'], ['3']]]
-        ['2', '|', '3'] -> [['2'], ['3']]
-        """
-        # List of all generated sentences
-        sentence_list = []
-        # Currently active sentence
-        cur_sentence = []
-        sentence_list.append(Sentence(cur_sentence))
-        # Determine which form the current expression has
-        while self._current_position < len(self.sentence):
-            cur = self.sentence[self._current_position]
-            self._current_position += 1
-            if cur == '(':
-                # Parse the subexpression
-                subexpr = self._parse_expr()
-                # Check if the subexpression only has one branch
-                # -> If so, append "(" and ")" and add it as is
-                normal_brackets = False
-                if len(subexpr.tree()) == 1:
-                    normal_brackets = True
-                    cur_sentence.append(Word('('))
-                # add it to the sentence
-                cur_sentence.append(subexpr)
-                if normal_brackets:
-                    cur_sentence.append(Word(')'))
-            elif cur == '|':
-                # Begin parsing a new sentence
-                cur_sentence = []
-                sentence_list.append(Sentence(cur_sentence))
-            elif cur == ')':
-                # End parsing the current subexpression
-                break
-            # TODO anything special about {sth}?
-            else:
-                cur_sentence.append(Word(cur))
-        return SentenceTree(sentence_list)
-
-    def expand_parentheses(self):
-        tree = self._parse()
-        return tree.expand()
-
-
-def expand_parentheses(sent):
-    """
-    ['1', '(', '2', '|', '3, ')'] -> [['1', '2'], ['1', '3']]
-    For example:
-    Will it (rain|pour) (today|tomorrow|)?
-    ---->
-    Will it rain today?
-    Will it rain tomorrow?
-    Will it rain?
-    Will it pour today?
-    Will it pour tomorrow?
-    Will it pour?
-    Args:
-        sent (list<str>): List of sentence in sentence
-    Returns:
-        list<list<str>>: Multiple possible sentences from original
-    """
-    expanded = SentenceTreeParser(sent).expand_parentheses()
-    return ["".join(_).strip() for _ in expanded]
+    word = _APOS_RE.sub(" ", word).strip().lower()
+    if len(word) > 2 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word

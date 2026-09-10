@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "palavreado"
+dynamic = ["version"]
+description = "Dead-simple keyword-based intent parser"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "jarbasai", email = "jarbasai@mailfence.com" }]
+keywords = ["intent", "nlp", "voice", "ovos", "mycroft", "keyword"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = ["simplematch", "quebra_frases", "ovos-spec-tools>=1.0.0a1,<2.0.0"]
+
+[project.optional-dependencies]
+ovos = [
+    "ovos-bus-client>=2.5.1a1,<3.0.0",
+    "ovos-config",
+    # opm.pipeline entrypoints + the bus-client 2.x stack need modern
+    # opm/workshop; bare floors backtrack to ancient releases that break
+    # collection (mycroft_bus_client / get_mycroft_bus import skew).
+    "ovos-plugin-manager>=2.3.0a1,<3.0.0",
+    "ovos-utils",
+    "ovos-workshop>=2.0.1a1",
+    "ovos-spec-tools>=1.4.0a1",
+    "langcodes",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ovos-bus-client>=2.5.1a1,<3.0.0",
+    "ovos-config",
+    "ovos-plugin-manager>=2.3.0a1,<3.0.0",
+    "ovos-utils",
+    "ovos-workshop>=2.0.1a1",
+    "ovos-spec-tools>=1.4.0a1",
+    "langcodes",
+]
+test = ["palavreado[dev]"]
+
+[project.entry-points."opm.pipeline"]
+palavreado = "palavreado.opm:PalavreadoPipeline"
+ovos-palavreado-hierarchical-pipeline = "palavreado.opm:HierarchicalPalavreadoPipeline"
+
+[project.urls]
+Homepage = "https://github.com/TigreGotico/palavreado"
+
+[tool.setuptools.dynamic]
+version = {attr = "palavreado.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
