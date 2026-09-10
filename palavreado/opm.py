@@ -406,10 +406,11 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
             samples = [samples]
         samples = [s for s in samples if isinstance(s, str) and s.strip()]
 
-        if not entity_name or not samples:
+        if not skill_id or not entity_name or not samples:
             LOG.warning(f"rejected registration topic={topic} "
                         f"skill_id={skill_id!r} entity_name={entity_name!r} "
-                        f"lang={lang!r}: missing entity_name or non-empty samples")
+                        f"lang={lang!r}: missing skill_id, entity_name or "
+                        f"non-empty samples")
             return
 
         resolved_lang = self._resolve_lang(lang)
@@ -419,11 +420,20 @@ class PalavreadoPipeline(ConfidenceMatcherPipeline):
                         f"lang={lang!r}: no container for lang")
             return
 
-        # §8.1: replacement keyed on (skill_id, entity_name, lang)
-        store = self._vocab[resolved_lang].setdefault(entity_name, [])
-        for sample in samples:
-            if sample not in store:
-                store.append(sample)
+        # §8.1: "Registering an intent whose (session_id, skill_id,
+        # intent_name, lang, method) quintuple matches an existing
+        # registration replaces it ... The same rule applies to entities."
+        # A re-registration therefore carries the whole value set, and
+        # accumulating would keep values the producer has dropped. The store
+        # itself is keyed by name alone, so two skills sharing an entity name
+        # still overwrite one another; that is a wider change to the matching
+        # path, tracked separately.
+        self._vocab[resolved_lang][entity_name] = list(dict.fromkeys(samples))
+        self.registered_vocab = [
+            v for v in self.registered_vocab
+            if not (v.get("entity_type") == entity_name
+                    and v.get("skill_id") == skill_id
+                    and v.get("lang") == resolved_lang)]
         self.registered_vocab.append({"entity_type": entity_name,
                                       "entity_value": samples,
                                       "skill_id": skill_id,
