@@ -63,12 +63,17 @@ class _Intent4PalavreadoHarness(E2EPipelineHarness):
                               {"skill_id": self.SKILL_ID}))
         time.sleep(settle)
 
-    def _emit(self, topic, intent_name=None, settle=0.6, **extra):
+    def _emit(self, topic, intent_name=None, settle=0.6, context_skill_id=None, **extra):
         data = {"skill_id": self.SKILL_ID, "lang": "en-US"}
         if intent_name is not None:
             data["intent_name"] = intent_name
         data.update(extra)
-        self.bus.emit(Message(topic, data, {"skill_id": self.SKILL_ID}))
+        # context.skill_id is the source that emitted the message
+        # (OVOS-INTENT-4 §3.1); default it to this producer's own skill, but
+        # allow a test to set it apart from data["skill_id"] so payload
+        # (target) and context (source) can name different skills.
+        source_skill_id = self.SKILL_ID if context_skill_id is None else context_skill_id
+        self.bus.emit(Message(topic, data, {"skill_id": source_skill_id}))
         time.sleep(settle)
 
 
